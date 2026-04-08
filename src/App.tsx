@@ -37,7 +37,7 @@ import {
   Eye
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { B, EDITAIS } from "./mockData";
+import { B, EDITAIS, PROJECTS, ALERTS } from "./mockData";
 import { Project, ProjectStatus, Alert as AlertType, Edital } from "./types";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -1077,7 +1077,7 @@ function AlertasView({ alerts }: { alerts: AlertType[] }) {
                       <span className="text-lg font-bold font-serif" style={{ color: a.cor || "#64748b" }}>{a.dias ?? "?"}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo}</h4>
+                      <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo || a.projeto}</h4>
                       <p className="text-xs text-slate-500">{a.tipo}{a.mensagem ? ` — ${a.mensagem}` : ""}</p>
                     </div>
                     <div className="text-right">
@@ -1348,6 +1348,13 @@ function LoginView() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoPrompt, setDemoPrompt] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const enterDemoMode = () => {
+    setToken("demo-token");
+    setUser({ id: "demo", name: "Modo Demo", email: "demo@rota.local", role: "LEITURA" });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1358,7 +1365,14 @@ function LoginView() {
       setRefreshToken(data.refreshToken);
       setUser(data.user);
     } catch (err) {
-      alert("Erro ao entrar: " + (err instanceof Error ? err.message : "Credenciais inválidas"));
+      const msg = err instanceof Error ? err.message : "";
+      // If the backend returned a non-JSON response, it's unreachable
+      if (msg === "Servidor indisponível" || msg === "Failed to fetch") {
+        setDemoPrompt(true);
+      } else {
+        // Backend is reachable but returned an error (wrong credentials, etc.)
+        setLoginError(msg || "Credenciais inválidas");
+      }
     } finally {
       setLoading(false);
     }
@@ -1400,6 +1414,12 @@ function LoginView() {
                 placeholder="••••••••"
               />
             </div>
+            {loginError && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {loginError}
+              </div>
+            )}
             <button 
               disabled={loading}
               className="w-full bg-slate-900 text-white font-bold py-4 rounded-lg hover:bg-slate-800 transition-all uppercase tracking-widest text-xs shadow-lg disabled:opacity-50"
@@ -1412,6 +1432,51 @@ function LoginView() {
           </div>
         </div>
       </motion.div>
+
+      {/* Demo mode prompt */}
+      <AnimatePresence>
+        {demoPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modo demonstração"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-amber-500" />
+                <h3 className="text-lg font-bold text-slate-900">Servidor Indisponível</h3>
+              </div>
+              <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                Não foi possível conectar ao servidor. Deseja entrar em <strong>modo demonstração</strong> com dados de exemplo (somente leitura)?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDemoPrompt(false)}
+                  className="flex-1 py-3 border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={enterDemoMode}
+                  className="flex-1 py-3 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg"
+                  autoFocus
+                >
+                  Entrar Demo
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1461,11 +1526,19 @@ export default function App() {
           : Math.max(0, Math.ceil((new Date(a.createdAt).getTime() - Date.now()) / 86400000)),
         cor: a.nivel === "N4" ? B.red : a.nivel === "N3" ? B.orange : a.nivel === "N2" ? B.blue : B.gray,
         bgCor: a.nivel === "N4" ? B.redBg : a.nivel === "N3" ? B.orangeBg : a.nivel === "N2" ? B.blueBg : B.grayLight,
+        titulo: a.titulo,
         mensagem: a.mensagem
       }));
       setAlerts(mappedAlerts);
     } catch (err: any) {
-      setError(err.message || "Erro ao carregar dados");
+      console.warn("API indisponível, usando dados de demonstração.", err);
+      // Fallback to mock data so the site is usable without a database
+      setProjects(PROJECTS);
+      setAlerts(ALERTS);
+      setDocuments(PROJECTS.flatMap(p => p.docs));
+      setStats({ totalProjects: PROJECTS.length, approvedProjects: PROJECTS.filter(p => p.status === "Aprovado").length, totalValue: PROJECTS.reduce((s, p) => s + p.valor, 0), approvalRate: (PROJECTS.filter(p => p.status === "Aprovado").length / PROJECTS.length) * 100 });
+      setAuditLogs([]);
+      setError(null);
     } finally {
       setLoading(false);
     }

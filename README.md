@@ -1,20 +1,80 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+
+# ROTA — Inteligência Institucional
+
+**Plataforma de gestão de ciclo completo de projetos com foco em compliance, antiglosa e governança institucional.**
+
 </div>
 
-# Run and deploy your AI Studio app
+## Funcionalidades
 
-This contains everything you need to run your app locally.
+- **Dashboard** — Visão executiva do pipeline com KPIs, alertas e gráficos
+- **Pipeline de Projetos** — Gestão do ciclo de vida completo (Oportunidade → Concluído)
+- **Banco de Editais** — Monitoramento de oportunidades de financiamento
+- **Alertas e Prazos** — Monitoramento proativo de datas críticas e documentos
+- **Gestão Documental** — Biblioteca institucional de certidões e documentos
+- **Módulo Antiglosa** — Auditoria preventiva de despesas com validação de conformidade
+- **Memória Organizacional** — Inteligência acumulada, logs de auditoria e lições aprendidas
 
-View your app in AI Studio: https://ai.studio/apps/7320fb9e-6021-490c-a015-00c0f54495d3
+## Tecnologias
 
-## Run Locally
+- **Frontend:** React 19 · TypeScript · Tailwind CSS v4 · Recharts · Framer Motion · Zustand
+- **Backend:** Express · Prisma ORM · JWT Auth · bcrypt
+- **Banco de Dados:** PostgreSQL (opcional — funciona em modo demo sem BD)
 
-**Prerequisites:**  Node.js
+## Como Executar
 
+### Pré-requisitos
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- Node.js 18+
+- PostgreSQL (opcional)
+
+### 1. Instalar dependências
+
+```bash
+npm install
+```
+
+### 2. Configurar variáveis de ambiente (opcional)
+
+Copie `.env.example` para `.env` e configure:
+
+```bash
+cp .env.example .env
+```
+
+> **Nota:** Sem `DATABASE_URL`, o site funciona em modo demonstração com dados de exemplo.
+
+### 3. Configurar banco de dados (opcional)
+
+Se tiver PostgreSQL configurado:
+
+```bash
+npx prisma migrate dev
+```
+
+### 4. Executar em desenvolvimento
+
+```bash
+npm run dev
+```
+
+O servidor estará disponível em **http://localhost:3000**
+
+### 5. Build para produção
+
+```bash
+npm run build
+npm run start
+```
+
+## Credenciais
+
+Com o banco de dados configurado, o seed cria automaticamente:
+
+| Campo | Valor |
+|-------|-------|
+| **E-mail** | `admin@guiasocial.org` |
+| **Senha** | `admin123` |
+
+Sem banco de dados, clique em "Entrar" e aceite o modo demonstração.
