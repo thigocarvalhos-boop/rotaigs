@@ -7,6 +7,11 @@ import { JWT_SECRET, JWT_REFRESH_SECRET } from "../_lib/auth.js";
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
 
+  if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+    console.error("[POST /api/auth/login] JWT_SECRET ou JWT_REFRESH_SECRET não configurados");
+    return res.status(500).json({ error: "Configuração do servidor incompleta. Verifique as variáveis de ambiente JWT_SECRET e JWT_REFRESH_SECRET." });
+  }
+
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: "Email e senha são obrigatórios" });
@@ -44,6 +49,13 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error) {
     console.error("[POST /api/auth/login]", error);
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("Can't reach database") || msg.includes("connect")) {
+      return res.status(500).json({ error: "Não foi possível conectar ao banco de dados. Verifique DATABASE_URL." });
+    }
+    if (msg.includes("does not exist") || msg.includes("relation")) {
+      return res.status(500).json({ error: "Tabelas não encontradas. Execute as migrations do Prisma." });
+    }
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 }
