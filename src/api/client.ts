@@ -12,6 +12,19 @@ const getHeaders = () => {
   };
 };
 
+/**
+ * Safely parse a response as JSON.
+ * When the backend is unavailable (e.g. static hosting), API routes return HTML
+ * instead of JSON. This helper detects that and throws a clear error.
+ */
+async function safeJson(res: Response): Promise<any> {
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error("Servidor indisponível");
+  }
+  return res.json();
+}
+
 async function fetchWithRefresh(url: string, options: RequestInit): Promise<Response> {
   let res = await fetch(url, options);
 
@@ -28,7 +41,7 @@ async function fetchWithRefresh(url: string, options: RequestInit): Promise<Resp
         body: JSON.stringify({ refreshToken }),
       });
       if (!refreshRes.ok) throw new Error("refresh failed");
-      const { accessToken } = await refreshRes.json();
+      const { accessToken } = await safeJson(refreshRes);
       useAuthStore.getState().setToken(accessToken);
       // Retry original request with new token
       const retryOptions = {
@@ -53,7 +66,7 @@ export const apiClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Falha na autenticação");
     // Servidor retorna accessToken + refreshToken
     return data;
@@ -62,7 +75,7 @@ export const apiClient = {
   async getProjects(): Promise<Project[]> {
     const res = await fetchWithRefresh(`${API_BASE}/projects`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar projetos");
-    return res.json();
+    return safeJson(res);
   },
 
   async createProject(project: Partial<Project>) {
@@ -71,7 +84,7 @@ export const apiClient = {
       headers: getHeaders(),
       body: JSON.stringify(project),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Erro ao criar projeto");
     return data;
   },
@@ -79,7 +92,7 @@ export const apiClient = {
   async getAlerts(): Promise<Alert[]> {
     const res = await fetchWithRefresh(`${API_BASE}/alerts`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar alertas");
-    return res.json();
+    return safeJson(res);
   },
 
   async readAlert(id: string) {
@@ -88,7 +101,7 @@ export const apiClient = {
       headers: getHeaders(),
     });
     if (!res.ok) throw new Error("Erro ao marcar alerta como lido");
-    return res.json();
+    return safeJson(res);
   },
 
   async resolveAlert(id: string, resolucao: string) {
@@ -97,7 +110,7 @@ export const apiClient = {
       headers: getHeaders(),
       body: JSON.stringify({ resolucao }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Erro ao resolver alerta");
     return data;
   },
@@ -108,7 +121,7 @@ export const apiClient = {
       headers: getHeaders(),
       body: JSON.stringify(expense),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Erro ao processar despesa");
     return data;
   },
@@ -119,7 +132,7 @@ export const apiClient = {
       headers: getHeaders(),
       body: JSON.stringify(doc),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Erro ao salvar documento");
     return data;
   },
@@ -127,23 +140,23 @@ export const apiClient = {
   async getAuditLogs() {
     const res = await fetchWithRefresh(`${API_BASE}/audit-logs`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar logs de auditoria");
-    return res.json();
+    return safeJson(res);
   },
 
   async getDocuments() {
     const res = await fetchWithRefresh(`${API_BASE}/documents`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar documentos");
-    return res.json();
+    return safeJson(res);
   },
 
   async getStats() {
     const res = await fetchWithRefresh(`${API_BASE}/stats`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar estatísticas");
-    return res.json();
+    return safeJson(res);
   },
 
   async getHealth() {
     const res = await fetch(`${API_BASE}/health`);
-    return res.json();
+    return safeJson(res);
   },
 };

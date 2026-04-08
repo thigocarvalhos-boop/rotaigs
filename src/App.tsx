@@ -1349,6 +1349,7 @@ function LoginView() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [demoPrompt, setDemoPrompt] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
   const enterDemoMode = () => {
     setToken("demo-token");
@@ -1364,14 +1365,13 @@ function LoginView() {
       setRefreshToken(data.refreshToken);
       setUser(data.user);
     } catch (err) {
-      // If the backend is unreachable, allow demo access with mock data
-      try {
-        await apiClient.getHealth();
-        // Backend is up but credentials are wrong
-        alert("Erro ao entrar: " + (err instanceof Error ? err.message : "Credenciais inválidas"));
-      } catch {
-        // Backend is down — enable demo mode with read-only role
+      const msg = err instanceof Error ? err.message : "";
+      // If the backend returned a non-JSON response, it's unreachable
+      if (msg === "Servidor indisponível" || msg === "Failed to fetch") {
         setDemoPrompt(true);
+      } else {
+        // Backend is reachable but returned an error (wrong credentials, etc.)
+        setLoginError(msg || "Credenciais inválidas");
       }
     } finally {
       setLoading(false);
@@ -1414,6 +1414,12 @@ function LoginView() {
                 placeholder="••••••••"
               />
             </div>
+            {loginError && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {loginError}
+              </div>
+            )}
             <button 
               disabled={loading}
               className="w-full bg-slate-900 text-white font-bold py-4 rounded-lg hover:bg-slate-800 transition-all uppercase tracking-widest text-xs shadow-lg disabled:opacity-50"
