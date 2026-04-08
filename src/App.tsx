@@ -554,7 +554,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
         area: formArea,
         valor: formValor,
         status: formStatus,
-        prazo: formPrazo ? new Date(formPrazo).toISOString() : undefined,
+        prazo: formPrazo ? `${formPrazo}T00:00:00Z` : undefined,
         probabilidade: formProbabilidade,
         risco: formRisco,
         aderencia: formAderencia,
@@ -2203,10 +2203,8 @@ export default function App() {
 
   const handleUpdateProject = async (id: string, data: any) => {
     if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
-    await apiClient.updateProject(id, data);
+    const updated = await apiClient.updateProject(id, data);
     await fetchData();
-    const updatedProjects = await apiClient.getProjects();
-    const updated = updatedProjects.find((p: Project) => p.id === id);
     if (updated) setSelectedProject(updated);
   };
 
