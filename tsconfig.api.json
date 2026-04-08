@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "allowJs": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "strict": false
+  },
+  "include": ["server.ts", "api/**/*", "src/lib/prisma.ts", "src/services/**/*"]
+}
