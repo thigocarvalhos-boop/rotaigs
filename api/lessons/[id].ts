@@ -20,9 +20,10 @@ export default async function handler(req: any, res: any) {
         },
       });
       return res.json(lesson);
-    } catch (error) {
+    } catch (error: any) {
       console.error("[PUT /api/lessons/:id]", error);
-      return res.status(404).json({ error: "Lição não encontrada" });
+      if (error?.code === "P2025") return res.status(404).json({ error: "Lição não encontrada" });
+      return res.status(500).json({ error: "Erro ao atualizar lição" });
     }
   }
 
@@ -31,9 +32,10 @@ export default async function handler(req: any, res: any) {
     try {
       await prisma.lessonLearned.delete({ where: { id } });
       return res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("[DELETE /api/lessons/:id]", error);
-      return res.status(404).json({ error: "Lição não encontrada" });
+      if (error?.code === "P2025") return res.status(404).json({ error: "Lição não encontrada" });
+      return res.status(500).json({ error: "Erro ao excluir lição" });
     }
   }
 

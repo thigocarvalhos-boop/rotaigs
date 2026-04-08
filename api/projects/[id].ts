@@ -80,6 +80,15 @@ export default async function handler(req: any, res: any) {
       await prisma.auditLog.deleteMany({ where: { projectId: id } });
       await prisma.project.delete({ where: { id } });
 
+      // Log deletion after all records removed; omit projectId so the entry persists
+      await auditService.log({
+        userId: user.id,
+        acao: "DELETE",
+        entidade: "Project",
+        entidadeId: id,
+        antes: before,
+      });
+
       return res.json({ success: true });
     } catch (error) {
       console.error("[DELETE /api/projects/:id]", error);

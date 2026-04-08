@@ -45,7 +45,7 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // DELETE /api/documents/:id
+  // DELETE /api/documents/:id — uses documents:update permission (consistent with original behavior)
   if (req.method === "DELETE") {
     if (!can(user, "documents:update", res)) return;
     try {
