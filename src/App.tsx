@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, RadarChart,
@@ -17,15 +17,13 @@ import {
   Files, 
   History, 
   BarChart3, 
-  Users, 
   Search, 
   ChevronRight, 
+  ChevronLeft,
   AlertCircle,
   CheckCircle2,
   Clock,
   ExternalLink,
-  MoreVertical,
-  Filter,
   Download,
   ArrowLeft,
   Calendar,
@@ -34,11 +32,21 @@ import {
   ShieldCheck,
   Info,
   RefreshCw,
-  Eye
+  Eye,
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
+  X,
+  List,
+  CalendarDays,
+  FileSpreadsheet,
+  FileImage,
+  File
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { B, EDITAIS, PROJECTS, ALERTS } from "./mockData";
-import { Project, ProjectStatus, Alert as AlertType, Edital } from "./types";
+import { Project, ProjectStatus, Alert as AlertType, Edital, LessonLearned } from "./types";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useAuthStore } from "./store/authStore";
@@ -118,6 +126,86 @@ function Card({ children, className, title, action }: { children: React.ReactNod
       <div className="p-5">{children}</div>
     </div>
   );
+}
+
+// --- HELPERS ---
+
+function getFileIcon(fileType?: string) {
+  switch (fileType?.toUpperCase()) {
+    case "PDF": return <FileText className="w-5 h-5 text-red-500" />;
+    case "DOC": case "DOCX": return <FileText className="w-5 h-5 text-blue-500" />;
+    case "XLS": case "XLSX": return <FileSpreadsheet className="w-5 h-5 text-green-600" />;
+    case "IMG": case "PNG": case "JPG": case "JPEG": return <FileImage className="w-5 h-5 text-purple-500" />;
+    default: return <File className="w-5 h-5 text-slate-400" />;
+  }
+}
+
+function handleDocumentDownload(url?: string | null) {
+  if (!url || !url.trim()) {
+    alert("Este documento não possui link de acesso.");
+    return;
+  }
+  try {
+    const u = new URL(url, window.location.origin);
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      alert("URL inválida para este documento.");
+    }
+  } catch {
+    alert("URL inválida para este documento.");
+  }
+}
+
+function isDocExpired(validade?: string | null): boolean {
+  if (!validade) return false;
+  return new Date(validade) < new Date();
+}
+
+function isDocExpiringSoon(validade?: string | null, days = 30): boolean {
+  if (!validade) return false;
+  const exp = new Date(validade);
+  const now = new Date();
+  const diff = (exp.getTime() - now.getTime()) / 86400000;
+  return diff > 0 && diff <= days;
+}
+
+function docStatusColor(status: string, validade?: string | null) {
+  if (isDocExpired(validade)) return "bg-red-50 text-red-600";
+  if (isDocExpiringSoon(validade)) return "bg-amber-50 text-amber-600";
+  if (status === "Aprovado") return "bg-emerald-50 text-emerald-600";
+  return "bg-amber-50 text-amber-600";
+}
+
+function docStatusLabel(status: string, validade?: string | null) {
+  if (isDocExpired(validade)) return "Vencido";
+  if (isDocExpiringSoon(validade)) return "A Vencer";
+  return status;
+}
+
+function exportLocalCsv(filename: string, headers: string[], rows: string[][]) {
+  const escape = (v: string) => {
+    if (v == null) return "";
+    const s = String(v);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+  const lines = [headers.map(escape).join(",")];
+  for (const row of rows) {
+    lines.push(row.map(escape).join(","));
+  }
+  const csv = "\uFEFF" + lines.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // --- VIEWS ---
@@ -611,8 +699,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                           </div>
                           <p className="text-xs text-red-700 leading-relaxed">{e.justificativa}</p>
                           <div className="mt-2 flex gap-2">
-                            <button className="text-[10px] font-bold text-red-800 underline">Anexar Justificativa Técnica</button>
-                            <button className="text-[10px] font-bold text-red-800 underline">Vincular Cotações</button>
+                            <span className="text-[10px] font-bold text-red-600 italic">Justificativa técnica necessária para regularização</span>
                           </div>
                         </div>
                       </div>
@@ -632,30 +719,46 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
           {activeTab === "docs" && (
             <Card title="Checklist Documental">
               <div className="space-y-1">
-                {project.docs.map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
-                    <div className="flex items-center gap-3">
-                      {doc.status === "Aprovado" ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Clock className="w-5 h-5 text-amber-500" />}
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{doc.nome}</p>
-                        {doc.validade && <p className="text-[10px] text-slate-400">Vencimento: {doc.validade.split("-").reverse().join("/")}</p>}
+                {project.docs.map((doc, idx) => {
+                  const expired = isDocExpired(doc.validade);
+                  const expiring = isDocExpiringSoon(doc.validade);
+                  return (
+                    <div key={idx} className={cn(
+                      "flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0",
+                      expired && "bg-red-50/50",
+                      expiring && !expired && "bg-amber-50/50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        {doc.status === "Aprovado" && !expired && !expiring ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : 
+                         expired ? <AlertCircle className="w-5 h-5 text-red-500" /> :
+                         expiring ? <Clock className="w-5 h-5 text-amber-500" /> :
+                         <Clock className="w-5 h-5 text-amber-500" />}
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{doc.nome}</p>
+                          {doc.validade && (
+                            <p className={cn("text-[10px]", expired ? "text-red-500 font-bold" : expiring ? "text-amber-500 font-bold" : "text-slate-400")}>
+                              Vencimento: {doc.validade.split("-").reverse().join("/")}
+                              {expired && " — VENCIDO"}
+                              {expiring && !expired && " — A VENCER"}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded uppercase", docStatusColor(doc.status, doc.validade))}>
+                          {docStatusLabel(doc.status, doc.validade)}
+                        </span>
+                        <button 
+                          onClick={() => handleDocumentDownload(doc.url)}
+                          className={cn("p-2 transition-colors", doc.url ? "text-slate-400 hover:text-indigo-600" : "text-slate-200 cursor-not-allowed")}
+                          title={doc.url ? "Abrir documento" : "Sem link disponível"}
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span 
-                        className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded uppercase",
-                          doc.status === "Aprovado" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
-                        )}
-                      >
-                        {doc.status}
-                      </span>
-                      <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors">
-                        <Download className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -737,9 +840,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                             </div>
                           </td>
                           <td className="py-4 text-right">
-                            <button className="p-2 text-slate-400 hover:text-indigo-600">
-                              <Eye className="w-4 h-4" />
-                            </button>
+                            <span className="text-[10px] text-slate-400 font-mono">{exp.id.slice(0, 8)}</span>
                           </td>
                         </tr>
                       ))}
@@ -801,7 +902,34 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                     { title: "Dossiê Documental", desc: "Compilado de todos os documentos validados e pendentes.", icon: Files },
                     { title: "Parecer de Auditoria", desc: "Relatório detalhado para prestação de contas final.", icon: FileText },
                   ].map((rel, i) => (
-                    <div key={i} className="p-4 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 hover:shadow-sm transition-all group cursor-pointer">
+                    <div 
+                      key={i} 
+                      onClick={() => {
+                        const p = project;
+                        if (rel.title === "Dossiê Documental") {
+                          exportLocalCsv(`documentos-${p.id}.csv`,
+                            ["Documento", "Status", "Validade"],
+                            p.docs.map(d => [d.nome, docStatusLabel(d.status, d.validade), d.validade || "Permanente"])
+                          );
+                        } else if (rel.title === "Execução Físico-Financeira") {
+                          exportLocalCsv(`execucao-${p.id}.csv`,
+                            ["Meta", "Indicador", "Meta Prevista", "Alcançado", "Unidade"],
+                            (p.metas || []).map(m => [m.descricao, m.indicador, String(m.meta), String(m.alcancado), m.unidade])
+                          );
+                        } else if (rel.title === "Relatório de Conformidade") {
+                          exportLocalCsv(`conformidade-${p.id}.csv`,
+                            ["Item", "Status", "Data"],
+                            (p.complianceChecks || []).map(c => [c.item, c.status, c.data])
+                          );
+                        } else {
+                          exportLocalCsv(`parecer-${p.id}.csv`,
+                            ["Campo", "Valor"],
+                            [["Nome", p.nome], ["Score", String(p.ptScore)], ["Compliance", String(p.scoreCompliance || "N/A")], ["Risco Glosa", String(p.scoreRiscoGlosa || "N/A")]]
+                          );
+                        }
+                      }}
+                      className="p-4 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 hover:shadow-sm transition-all group cursor-pointer"
+                    >
                       <div className="flex items-start gap-4">
                         <div className="p-3 bg-slate-50 rounded-lg group-hover:bg-indigo-50 transition-colors">
                           <rel.icon className="w-5 h-5 text-slate-400 group-hover:text-indigo-600" />
@@ -937,27 +1065,40 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                 <span className={cn("text-xs font-bold uppercase", project.risco === "Baixo" ? "text-emerald-400" : project.risco === "Médio" ? "text-amber-400" : "text-red-400")}>{project.risco}</span>
               </div>
             </div>
-            <button className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold uppercase tracking-widest transition-all">
-              Exportar Parecer PDF
+            <button
+              onClick={() => {
+                const p = project;
+                exportLocalCsv(`parecer-${p.id}.csv`,
+                  ["Campo", "Valor"],
+                  [
+                    ["Nome", p.nome], ["Edital", p.edital], ["Financiador", p.financiador],
+                    ["Área", p.area], ["Valor", String(p.valor)], ["Status", p.status],
+                    ["Prazo", p.prazo], ["Probabilidade", `${p.probabilidade}%`],
+                    ["Risco", p.risco], ["Score PTI", String(p.ptScore)],
+                    ["Território", p.territorio], ["Público", p.publico],
+                  ]
+                );
+              }}
+              className="w-full mt-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
+            >
+              Exportar Parecer CSV
             </button>
           </Card>
 
-          <Card title="Ações Rápidas">
-            <div className="space-y-2">
-              {[
-                { label: "Atualizar Status", icon: TrendingUp },
-                { label: "Adicionar Documento", icon: FileText },
-                { label: "Registrar Comentário", icon: History },
-                { label: "Ver Pasta Drive", icon: ExternalLink },
-              ].map(action => (
-                <button 
-                  key={action.label}
-                  className="w-full flex items-center gap-3 p-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-lg transition-all border border-transparent hover:border-slate-100"
-                >
-                  <action.icon className="w-4 h-4" />
-                  {action.label}
-                </button>
-              ))}
+          <Card title="Informações do Projeto">
+            <div className="space-y-3">
+              <div className="border-b border-slate-50 pb-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Responsável</p>
+                <p className="text-sm text-slate-800 font-medium">{project.responsavel}</p>
+              </div>
+              <div className="border-b border-slate-50 pb-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Território</p>
+                <p className="text-sm text-slate-800 font-medium">{project.territorio}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Público-Alvo</p>
+                <p className="text-sm text-slate-800 font-medium">{project.publico}</p>
+              </div>
             </div>
           </Card>
         </div>
@@ -1002,9 +1143,16 @@ function EditalCard({ edital }: { edital: Edital }) {
               {"★".repeat(edital.aderencia)}{"☆".repeat(5 - edital.aderencia)}
             </div>
           </div>
-          <button className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
-            Ver Edital <ChevronRight className="w-3 h-3" />
-          </button>
+          {edital.link ? (
+            <button 
+              onClick={() => window.open(edital.link, "_blank", "noopener,noreferrer")}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+            >
+              Ver Edital <ChevronRight className="w-3 h-3" />
+            </button>
+          ) : (
+            <span className="text-xs text-slate-400 italic">Sem link</span>
+          )}
         </div>
       </div>
     </div>
@@ -1049,7 +1197,33 @@ function EditaisView() {
   );
 }
 
-function AlertasView({ alerts }: { alerts: AlertType[] }) {
+function AlertasView({ alerts, onExportCsv }: { alerts: AlertType[]; onExportCsv: (type: string) => void }) {
+  const [mode, setMode] = useState<"lista" | "calendario">("lista");
+  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+
+  const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  const prevMonth = () => {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(prevYear => prevYear - 1); }
+    else setCalMonth(prevMo => prevMo - 1);
+  };
+  const nextMonth = () => {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(prevYear => prevYear + 1); }
+    else setCalMonth(prevMo => prevMo + 1);
+  };
+
+  const firstDayOfMonth = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+  const getAlertsForDay = (day: number) => {
+    return alerts.filter(a => {
+      if (!a.prazoDate) return false;
+      const d = new Date(a.prazoDate);
+      return d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === day;
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1058,89 +1232,157 @@ function AlertasView({ alerts }: { alerts: AlertType[] }) {
           <p className="text-slate-500 text-sm">Monitoramento proativo de datas críticas</p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-50">Calendário</button>
-          <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-200">Lista de Urgências</button>
+          <button 
+            onClick={() => setMode("calendario")}
+            className={cn("px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+              mode === "calendario" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-white border border-slate-200 hover:bg-slate-50"
+            )}
+          >
+            <CalendarDays className="w-3.5 h-3.5" /> Calendário
+          </button>
+          <button 
+            onClick={() => setMode("lista")}
+            className={cn("px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-2",
+              mode === "lista" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-white border border-slate-200 hover:bg-slate-50"
+            )}
+          >
+            <List className="w-3.5 h-3.5" /> Lista
+          </button>
+          <button 
+            onClick={() => onExportCsv("alerts")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"
+          >
+            <Download className="w-3.5 h-3.5" /> CSV
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <Card title="Linha do Tempo de Urgências">
-            <div className="space-y-4">
-              {alerts.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 italic text-sm">Nenhum alerta pendente no momento.</div>
-              ) : (
-                alerts.sort((a, b) => (a.dias || 0) - (b.dias || 0)).map(a => (
-                  <div key={a.id} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                    <div className="w-12 h-12 rounded-lg flex flex-col items-center justify-center flex-shrink-0" style={{ background: a.bgCor || "#f1f5f9" }}>
-                      <span className="text-[10px] font-bold uppercase" style={{ color: a.cor || "#64748b" }}>{a.nivel}</span>
-                      <span className="text-lg font-bold font-serif" style={{ color: a.cor || "#64748b" }}>{a.dias ?? "?"}</span>
+      {mode === "lista" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <Card title="Linha do Tempo de Urgências">
+              <div className="space-y-4">
+                {alerts.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 italic text-sm">Nenhum alerta pendente no momento.</div>
+                ) : (
+                  alerts.sort((a, b) => (a.dias || 0) - (b.dias || 0)).map(a => (
+                    <div key={a.id} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors">
+                      <div className="w-12 h-12 rounded-lg flex flex-col items-center justify-center flex-shrink-0" style={{ background: a.bgCor || "#f1f5f9" }}>
+                        <span className="text-[10px] font-bold uppercase" style={{ color: a.cor || "#64748b" }}>{a.nivel}</span>
+                        <span className="text-lg font-bold font-serif" style={{ color: a.cor || "#64748b" }}>{a.dias ?? "?"}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo || a.projeto}</h4>
+                        <p className="text-xs text-slate-500">{a.tipo}{a.mensagem ? ` — ${a.mensagem}` : ""}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-bold text-slate-800">{a.prazo || "N/A"}</p>
+                        <p className="text-[9px] text-slate-400 uppercase font-bold">Vencimento</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo || a.projeto}</h4>
-                      <p className="text-xs text-slate-500">{a.tipo}{a.mensagem ? ` — ${a.mensagem}` : ""}</p>
+                  ))
+                )}
+              </div>
+            </Card>
+          </div>
+          <div className="lg:col-span-1 space-y-6">
+            <Card title="Resumo por Nível">
+              <div className="space-y-4">
+                {[
+                  { nivel: "N4", label: "Crítico", color: B.red, count: alerts.filter(a => a.nivel === "N4").length },
+                  { nivel: "N3", label: "Urgente", color: B.orange, count: alerts.filter(a => a.nivel === "N3").length },
+                  { nivel: "N2", label: "Atenção", color: B.blue, count: alerts.filter(a => a.nivel === "N2").length },
+                  { nivel: "N1", label: "Informativo", color: B.gray, count: alerts.filter(a => a.nivel === "N1").length },
+                ].map(n => (
+                  <div key={n.nivel} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ background: n.color }} />
+                      <span className="text-xs font-bold text-slate-600">{n.label} ({n.nivel})</span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-slate-800">{a.prazo || "N/A"}</p>
-                      <p className="text-[9px] text-slate-400 uppercase font-bold">Vencimento</p>
-                    </div>
-                    <button className="p-2 text-slate-300 hover:text-indigo-600">
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
+                    <span className="text-sm font-bold text-slate-900">{n.count}</span>
                   </div>
-                ))
-              )}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          </div>
         </div>
-        <div className="lg:col-span-1 space-y-6">
-          <Card title="Resumo por Nível">
-            <div className="space-y-4">
-              {[
-                { nivel: "N4", label: "Crítico", color: B.red, count: alerts.filter(a => a.nivel === "N4").length },
-                { nivel: "N3", label: "Urgente", color: B.orange, count: alerts.filter(a => a.nivel === "N3").length },
-                { nivel: "N2", label: "Atenção", color: B.blue, count: alerts.filter(a => a.nivel === "N2").length },
-                { nivel: "N1", label: "Informativo", color: B.gray, count: alerts.filter(a => a.nivel === "N1").length },
-              ].map(n => (
-                <div key={n.nivel} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: n.color }} />
-                    <span className="text-xs font-bold text-slate-600">{n.label} ({n.nivel})</span>
-                  </div>
-                  <span className="text-sm font-bold text-slate-900">{n.count}</span>
+      )}
+
+      {mode === "calendario" && (
+        <Card>
+          <div className="flex items-center justify-between mb-6">
+            <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <ChevronLeft className="w-5 h-5 text-slate-600" />
+            </button>
+            <h3 className="text-lg font-bold text-slate-900 font-serif">{MONTH_NAMES[calMonth]} {calYear}</h3>
+            <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <ChevronRight className="w-5 h-5 text-slate-600" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((dayName, index) => <span key={`${dayName}-${index}`} className="text-[10px] font-bold text-slate-400 py-2">{dayName}</span>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="aspect-square" />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dayAlerts = getAlertsForDay(day);
+              const hasAlert = dayAlerts.length > 0;
+              const isToday = day === new Date().getDate() && calMonth === new Date().getMonth() && calYear === new Date().getFullYear();
+              return (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "aspect-square flex flex-col items-center justify-center text-xs rounded-lg border relative",
+                    isToday && "ring-2 ring-indigo-500",
+                    hasAlert ? "bg-red-50 border-red-200 text-red-700 font-bold cursor-pointer" : "bg-white border-slate-50 text-slate-500"
+                  )}
+                  title={hasAlert ? dayAlerts.map(a => `${a.nivel}: ${a.titulo || a.projeto}`).join("\n") : ""}
+                >
+                  <span>{day}</span>
+                  {hasAlert && (
+                    <div className="flex gap-0.5 mt-0.5">
+                      {dayAlerts.slice(0, 3).map((a, j) => (
+                        <div key={j} className="w-1.5 h-1.5 rounded-full" style={{ background: a.cor }} />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </Card>
-          <Card title="Calendário Rápido">
-             <div className="grid grid-cols-7 gap-1 text-center mb-2">
-               {['D','S','T','Q','Q','S','S'].map((d, i) => <span key={`${d}-${i}`} className="text-[10px] font-bold text-slate-400">{d}</span>)}
-             </div>
-             <div className="grid grid-cols-7 gap-1">
-               {Array.from({length: 31}).map((_, i) => {
-                 const day = i + 1;
-                 const hasAlert = alerts.some(a => a.prazo && new Date(a.prazo).getDate() === day);
-                 return (
-                   <div 
-                    key={i} 
-                    className={cn(
-                      "aspect-square flex items-center justify-center text-[10px] rounded-md border",
-                      hasAlert ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-bold" : "bg-white border-slate-50 text-slate-400"
-                    )}
-                   >
-                     {day}
-                   </div>
-                 );
-               })}
-             </div>
-          </Card>
-        </div>
-      </div>
+              );
+            })}
+          </div>
+          <div className="mt-6 space-y-2">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Alertas deste mês</h4>
+            {alerts.filter(a => {
+              if (!a.prazoDate) return false;
+              const d = new Date(a.prazoDate);
+              return d.getFullYear() === calYear && d.getMonth() === calMonth;
+            }).length === 0 ? (
+              <p className="text-xs text-slate-400 italic">Nenhum alerta neste mês</p>
+            ) : (
+              alerts.filter(a => {
+                if (!a.prazoDate) return false;
+                const d = new Date(a.prazoDate);
+                return d.getFullYear() === calYear && d.getMonth() === calMonth;
+              }).map(a => (
+                <div key={a.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: a.cor }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">{a.titulo || a.projeto}</p>
+                    <p className="text-[10px] text-slate-500">{a.tipo} — {a.prazo}</p>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase" style={{ color: a.cor }}>{a.nivel}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
 
-function DocumentosView({ documents }: { documents: any[] }) {
+function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExportCsv: (type: string) => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1148,8 +1390,11 @@ function DocumentosView({ documents }: { documents: any[] }) {
           <h2 className="text-2xl font-bold text-slate-900 font-serif">Gestão Documental</h2>
           <p className="text-slate-500 text-sm">Biblioteca institucional e certidões</p>
         </div>
-        <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-200 flex items-center gap-2">
-          <Download className="w-4 h-4" /> Exportar Kit Documental
+        <button 
+          onClick={() => onExportCsv("documents")}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-200 flex items-center gap-2"
+        >
+          <Download className="w-4 h-4" /> Exportar CSV
         </button>
       </div>
 
@@ -1160,39 +1405,51 @@ function DocumentosView({ documents }: { documents: any[] }) {
               {documents.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 italic text-sm">Nenhum documento encontrado.</div>
               ) : (
-                documents.map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-slate-400" />
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{doc.nome}</p>
-                        <div className="flex items-center gap-2">
-                          <p className="text-[10px] text-slate-400 uppercase font-bold">
-                            Validade: {doc.validade ? new Date(doc.validade).toLocaleDateString('pt-BR') : "Permanente"}
-                          </p>
-                          {doc.project && (
-                            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">
-                              Projeto: {doc.project.nome}
-                            </span>
-                          )}
+                documents.map((doc, idx) => {
+                  const expired = isDocExpired(doc.validade);
+                  const expiring = isDocExpiringSoon(doc.validade);
+                  return (
+                    <div key={idx} className={cn(
+                      "flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0",
+                      expired && "bg-red-50/50",
+                      expiring && !expired && "bg-amber-50/50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        {getFileIcon(doc.fileType)}
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{doc.nome}</p>
+                          <div className="flex items-center gap-2">
+                            <p className={cn("text-[10px] uppercase font-bold", expired ? "text-red-500" : expiring ? "text-amber-500" : "text-slate-400")}>
+                              Validade: {doc.validade ? new Date(doc.validade).toLocaleDateString('pt-BR') : "Permanente"}
+                              {expired && " — VENCIDO"}
+                              {expiring && !expired && " — A VENCER"}
+                            </p>
+                            {doc.fileType && (
+                              <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{doc.fileType}</span>
+                            )}
+                            {doc.project && (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">
+                                Projeto: {doc.project.nome}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-4">
+                        <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded uppercase", docStatusColor(doc.status, doc.validade))}>
+                          {docStatusLabel(doc.status, doc.validade)}
+                        </span>
+                        <button 
+                          onClick={() => handleDocumentDownload(doc.url)}
+                          className={cn("p-2 transition-colors", doc.url ? "text-slate-400 hover:text-indigo-600" : "text-slate-200 cursor-not-allowed")}
+                          title={doc.url ? "Abrir documento" : "Sem link disponível"}
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span 
-                        className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded uppercase",
-                          doc.status === "Aprovado" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
-                        )}
-                      >
-                        {doc.status}
-                      </span>
-                      <button className="p-2 text-slate-400 hover:text-indigo-600">
-                        <Download className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </Card>
@@ -1200,30 +1457,47 @@ function DocumentosView({ documents }: { documents: any[] }) {
         <div className="lg:col-span-1 space-y-6">
           <Card title="Status de Certidões">
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-bold text-emerald-800">Regularidade Fiscal</span>
-                </div>
-                <p className="text-[10px] text-emerald-700">Todas as certidões federais e estaduais estão em dia.</p>
-              </div>
-              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-bold text-amber-800">Atenção: Municipal</span>
-                </div>
-                <p className="text-[10px] text-amber-700">CND Municipal Recife vence em 15 dias. Processo de renovação iniciado.</p>
-              </div>
-            </div>
-          </Card>
-          <Card title="Ações Rápidas">
-            <div className="space-y-2">
-              <button className="w-full p-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-100 flex items-center gap-2">
-                <RefreshCw className="w-4 h-4" /> Atualizar Certidões
-              </button>
-              <button className="w-full p-3 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-100 flex items-center gap-2">
-                <Search className="w-4 h-4" /> Consultar Regularidade
-              </button>
+              {(() => {
+                const expired = documents.filter(d => isDocExpired(d.validade));
+                const expiring = documents.filter(d => isDocExpiringSoon(d.validade));
+                const ok = documents.filter(d => !isDocExpired(d.validade) && !isDocExpiringSoon(d.validade) && d.status === "Aprovado");
+                return (
+                  <>
+                    {ok.length > 0 && (
+                      <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span className="text-xs font-bold text-emerald-800">Documentos Regulares</span>
+                        </div>
+                        <p className="text-[10px] text-emerald-700">{ok.length} documento(s) em dia.</p>
+                      </div>
+                    )}
+                    {expiring.length > 0 && (
+                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Clock className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs font-bold text-amber-800">A Vencer (30 dias)</span>
+                        </div>
+                        <p className="text-[10px] text-amber-700">{expiring.map(d => d.nome).join(", ")}</p>
+                      </div>
+                    )}
+                    {expired.length > 0 && (
+                      <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertCircle className="w-4 h-4 text-red-600" />
+                          <span className="text-xs font-bold text-red-800">Vencidos</span>
+                        </div>
+                        <p className="text-[10px] text-red-700">{expired.map(d => d.nome).join(", ")}</p>
+                      </div>
+                    )}
+                    {expired.length === 0 && expiring.length === 0 && ok.length === 0 && (
+                      <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                        <p className="text-[10px] text-slate-500">Nenhum documento com validade registrada.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </Card>
         </div>
@@ -1232,13 +1506,60 @@ function DocumentosView({ documents }: { documents: any[] }) {
   );
 }
 
-function MemoriaView({ stats, auditLogs }: { stats: any; auditLogs: any[] }) {
+function MemoriaView({ stats, auditLogs, lessons, onCreateLesson, onUpdateLesson, onDeleteLesson, onExportCsv }: { 
+  stats: any; auditLogs: any[]; lessons: LessonLearned[];
+  onCreateLesson: (l: { projeto: string; licao: string; categoria?: string }) => Promise<void>;
+  onUpdateLesson: (id: string, l: { projeto?: string; licao?: string; categoria?: string }) => Promise<void>;
+  onDeleteLesson: (id: string) => Promise<void>;
+  onExportCsv: (type: string) => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formProjeto, setFormProjeto] = useState("");
+  const [formLicao, setFormLicao] = useState("");
+  const [formCategoria, setFormCategoria] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const displayStats = [
     { label: "Projetos Submetidos", value: stats?.totalProjects || 0, icon: GitBranch, color: B.blue },
     { label: "Taxa de Aprovação", value: `${(stats?.approvalRate || 0).toFixed(1)}%`, icon: TrendingUp, color: B.green },
     { label: "Total Captado (Histórico)", value: fmt(stats?.totalValue || 0), icon: ShieldCheck, color: B.teal },
-    { label: "Audit Logs Recentes", value: auditLogs.length, icon: History, color: B.purple },
+    { label: "Lições Registradas", value: lessons.length, icon: History, color: B.purple },
   ];
+
+  const startEdit = (l: LessonLearned) => {
+    setEditingId(l.id);
+    setFormProjeto(l.projeto);
+    setFormLicao(l.licao);
+    setFormCategoria(l.categoria || "");
+    setShowForm(true);
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setFormProjeto("");
+    setFormLicao("");
+    setFormCategoria("");
+    setShowForm(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formProjeto.trim() || !formLicao.trim()) return;
+    setSaving(true);
+    try {
+      if (editingId) {
+        await onUpdateLesson(editingId, { projeto: formProjeto, licao: formLicao, categoria: formCategoria || undefined });
+      } else {
+        await onCreateLesson({ projeto: formProjeto, licao: formLicao, categoria: formCategoria || undefined });
+      }
+      setShowForm(false);
+      setEditingId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1246,6 +1567,20 @@ function MemoriaView({ stats, auditLogs }: { stats: any; auditLogs: any[] }) {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 font-serif">Memória Organizacional</h2>
           <p className="text-slate-500 text-sm">Inteligência acumulada e histórico de impacto</p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => onExportCsv("lessons")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"
+          >
+            <Download className="w-3.5 h-3.5" /> CSV Lições
+          </button>
+          <button 
+            onClick={() => onExportCsv("audit-logs")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"
+          >
+            <Download className="w-3.5 h-3.5" /> CSV Auditoria
+          </button>
         </div>
       </div>
 
@@ -1282,21 +1617,70 @@ function MemoriaView({ stats, auditLogs }: { stats: any; auditLogs: any[] }) {
             )}
           </div>
         </Card>
-        <Card title="Lições Aprendidas Recentes">
+        <Card 
+          title="Lições Aprendidas"
+          action={
+            <button onClick={startCreate} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+              <Plus className="w-3.5 h-3.5" /> Nova Lição
+            </button>
+          }
+        >
           <div className="space-y-4">
-            {[
-              { projeto: "Guia Alimenta Recife", licao: "Aumentar detalhamento da metodologia de busca ativa para editais de assistência social.", data: "Mar/2026" },
-              { projeto: "Maré Delas", licao: "Confirmar disponibilidade de local parceiro antes da submissão para evitar diligência de infraestrutura.", data: "Fev/2026" },
-              { projeto: "Cidadania +60", licao: "Focar em indicadores de inclusão digital para editais de conselhos de idosos.", data: "Jan/2026" },
-            ].map((l, i) => (
-              <div key={i} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-xs font-bold text-slate-800">{l.projeto}</h4>
-                  <span className="text-[10px] font-bold text-slate-400">{l.data}</span>
+            {showForm && (
+              <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-3">
+                <h4 className="text-xs font-bold text-indigo-800 uppercase">{editingId ? "Editar Lição" : "Nova Lição"}</h4>
+                <input 
+                  type="text" placeholder="Projeto" value={formProjeto} onChange={e => setFormProjeto(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <textarea 
+                  placeholder="Lição aprendida..." value={formLicao} onChange={e => setFormLicao(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" rows={3}
+                />
+                <input 
+                  type="text" placeholder="Categoria (opcional)" value={formCategoria} onChange={e => setFormCategoria(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleSubmit} disabled={saving || !formProjeto.trim() || !formLicao.trim()}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Save className="w-3.5 h-3.5" /> {saving ? "Salvando..." : "Salvar"}
+                  </button>
+                  <button onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-bold uppercase">
+                    Cancelar
+                  </button>
                 </div>
-                <p className="text-xs text-slate-600 italic leading-relaxed">"{l.licao}"</p>
               </div>
-            ))}
+            )}
+            {lessons.length === 0 && !showForm ? (
+              <div className="p-8 text-center text-slate-400 italic text-sm">Nenhuma lição registrada.</div>
+            ) : (
+              lessons.map(l => (
+                <div key={l.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 group">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="text-xs font-bold text-slate-800">{l.projeto}</h4>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {new Date(l.createdAt).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+                      </span>
+                      <button onClick={() => startEdit(l)} className="p-1 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => { if (confirm("Excluir esta lição?")) onDeleteLesson(l.id); }}
+                        className="p-1 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600 italic leading-relaxed">"{l.licao}"</p>
+                  {l.categoria && <span className="text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase mt-2 inline-block">{l.categoria}</span>}
+                </div>
+              ))
+            )}
           </div>
         </Card>
       </div>
@@ -1304,14 +1688,14 @@ function MemoriaView({ stats, auditLogs }: { stats: any; auditLogs: any[] }) {
   );
 }
 
-function RelatoriosView() {
+function RelatoriosView({ onExportCsv }: { onExportCsv: (type: string) => void }) {
   const reports = [
-    { title: "Pipeline Executivo", desc: "Visão completa de valores e probabilidades por fase.", icon: LayoutDashboard },
-    { title: "Relatório de Captação", desc: "Histórico de recursos captados e projeção anual.", icon: TrendingUp },
-    { title: "Status Documental", desc: "Checklist de certidões e documentos institucionais.", icon: Files },
-    { title: "Desempenho Técnico", desc: "Análise de scores PTI e taxas de aprovação.", icon: BarChart3 },
-    { title: "Impacto Territorial", desc: "Distribuição de projetos e beneficiários por RPA.", icon: Search },
-    { title: "Memória de Editais", desc: "Histórico de submissões por financiador.", icon: Library },
+    { title: "Pipeline Executivo", desc: "Visão completa de valores e probabilidades por fase.", icon: LayoutDashboard, exportType: "pipeline" },
+    { title: "Relatório de Captação", desc: "Histórico de recursos captados e projeção anual.", icon: TrendingUp, exportType: "captacao" },
+    { title: "Status Documental", desc: "Checklist de certidões e documentos institucionais.", icon: Files, exportType: "documents" },
+    { title: "Alertas e Prazos", desc: "Listagem completa de alertas e prazos críticos.", icon: Bell, exportType: "alerts" },
+    { title: "Auditoria", desc: "Log de auditoria com ações, usuários e entidades.", icon: ShieldCheck, exportType: "audit-logs" },
+    { title: "Lições Aprendidas", desc: "Inteligência acumulada por projeto.", icon: History, exportType: "lessons" },
   ];
 
   return (
@@ -1319,7 +1703,7 @@ function RelatoriosView() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 font-serif">Relatórios e Exportações</h2>
-          <p className="text-slate-500 text-sm">Geração de documentos e análise de dados</p>
+          <p className="text-slate-500 text-sm">Exportação de dados em CSV</p>
         </div>
       </div>
 
@@ -1331,8 +1715,11 @@ function RelatoriosView() {
             </div>
             <h3 className="text-sm font-bold text-slate-900 mb-1">{r.title}</h3>
             <p className="text-xs text-slate-500 mb-6">{r.desc}</p>
-            <button className="w-full py-2 bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2">
-              <Download className="w-3.5 h-3.5" /> Gerar PDF / Excel
+            <button 
+              onClick={() => onExportCsv(r.exportType)}
+              className="w-full py-2 bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar CSV
             </button>
           </div>
         ))}
@@ -1359,6 +1746,7 @@ function LoginView() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setLoginError("");
     try {
       const data = await apiClient.login(email, password);
       setToken(data.accessToken);
@@ -1366,11 +1754,9 @@ function LoginView() {
       setUser(data.user);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      // If the backend returned a non-JSON response, it's unreachable
       if (msg === "Servidor indisponível" || msg === "Failed to fetch") {
         setDemoPrompt(true);
       } else {
-        // Backend is reachable but returned an error (wrong credentials, etc.)
         setLoginError(msg || "Credenciais inválidas");
       }
     } finally {
@@ -1433,7 +1819,6 @@ function LoginView() {
         </div>
       </motion.div>
 
-      {/* Demo mode prompt */}
       <AnimatePresence>
         {demoPrompt && (
           <motion.div
@@ -1482,7 +1867,7 @@ function LoginView() {
 }
 
 export default function App() {
-  const { user, token, setUser, setToken, logout } = useAuthStore();
+  const { user, token, logout } = useAuthStore();
   const [view, setView] = useState("dashboard");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1490,67 +1875,144 @@ export default function App() {
   const [stats, setStats] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  const [lessons, setLessons] = useState<LessonLearned[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
-  useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-  }, [token]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [pData, aData, sData, lData, dData] = await Promise.all([
+      const [pData, aData, sData, lData, dData, lessonsData] = await Promise.all([
         apiClient.getProjects(),
         apiClient.getAlerts(),
         apiClient.getStats(),
         apiClient.getAuditLogs(),
-        apiClient.getDocuments()
+        apiClient.getDocuments(),
+        apiClient.getLessons()
       ]);
       setProjects(pData);
       setStats(sData);
       setAuditLogs(lData);
       setDocuments(dData);
-      // Map backend alerts to frontend AlertType
-      const mappedAlerts: AlertType[] = aData.map((a: any) => ({
-        id: a.id,
-        nivel: a.nivel,
-        tipo: a.tipo,
-        projeto: a.project?.nome || "Geral",
-        prazo: a.createdAt ? new Date(a.createdAt).toLocaleDateString('pt-BR') : "N/A",
-        dias: a.prazo
-          ? Math.max(0, Math.ceil((new Date(a.prazo).getTime() - Date.now()) / 86400000))
-          : Math.max(0, Math.ceil((new Date(a.createdAt).getTime() - Date.now()) / 86400000)),
-        cor: a.nivel === "N4" ? B.red : a.nivel === "N3" ? B.orange : a.nivel === "N2" ? B.blue : B.gray,
-        bgCor: a.nivel === "N4" ? B.redBg : a.nivel === "N3" ? B.orangeBg : a.nivel === "N2" ? B.blueBg : B.grayLight,
-        titulo: a.titulo,
-        mensagem: a.mensagem
-      }));
+      setLessons(lessonsData);
+      setIsDemo(false);
+
+      const mappedAlerts: AlertType[] = aData.map((a: any) => {
+        const prazoDate = a.prazo || null;
+        const dias = prazoDate
+          ? Math.max(0, Math.ceil((new Date(prazoDate).getTime() - Date.now()) / 86400000))
+          : 0;
+        return {
+          id: a.id,
+          nivel: a.nivel,
+          tipo: a.tipo,
+          projeto: a.project?.nome || "Geral",
+          prazo: prazoDate ? new Date(prazoDate).toLocaleDateString('pt-BR') : (a.createdAt ? new Date(a.createdAt).toLocaleDateString('pt-BR') : "N/A"),
+          dias,
+          cor: a.nivel === "N4" ? B.red : a.nivel === "N3" ? B.orange : a.nivel === "N2" ? B.blue : B.gray,
+          bgCor: a.nivel === "N4" ? B.redBg : a.nivel === "N3" ? B.orangeBg : a.nivel === "N2" ? B.blueBg : B.grayLight,
+          titulo: a.titulo,
+          mensagem: a.mensagem,
+          prazoDate: prazoDate
+        };
+      });
       setAlerts(mappedAlerts);
     } catch (err: any) {
       console.warn("API indisponível, usando dados de demonstração.", err);
-      // Fallback to mock data so the site is usable without a database
       setProjects(PROJECTS);
       setAlerts(ALERTS);
       setDocuments(PROJECTS.flatMap(p => p.docs));
       setStats({ totalProjects: PROJECTS.length, approvedProjects: PROJECTS.filter(p => p.status === "Aprovado").length, totalValue: PROJECTS.reduce((s, p) => s + p.valor, 0), approvalRate: (PROJECTS.filter(p => p.status === "Aprovado").length / PROJECTS.length) * 100 });
       setAuditLogs([]);
+      setLessons([]);
+      setIsDemo(true);
       setError(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      fetchData();
+    }
+  }, [token, fetchData]);
 
   if (!token) return <LoginView />;
+
+  const handleExportCsv = async (type: string) => {
+    if (isDemo) {
+      // Export from local data in demo mode
+      if (type === "pipeline") {
+        exportLocalCsv("pipeline.csv",
+          ["ID", "Nome", "Edital", "Financiador", "Área", "Valor", "Status", "Prazo", "Probabilidade", "Risco", "Responsável"],
+          projects.map(p => [p.id, p.nome, p.edital, p.financiador, p.area, String(p.valor), p.status, p.prazo, String(p.probabilidade), p.risco, p.responsavel])
+        );
+      } else if (type === "documents") {
+        exportLocalCsv("documentos.csv",
+          ["Nome", "Projeto", "Status", "Validade"],
+          documents.map((d: any) => [d.nome, d.project?.nome || "", d.status, d.validade || "Permanente"])
+        );
+      } else if (type === "alerts") {
+        exportLocalCsv("alertas.csv",
+          ["Nível", "Tipo", "Projeto", "Prazo", "Dias"],
+          alerts.map(a => [a.nivel, a.tipo, a.projeto, a.prazo, String(a.dias)])
+        );
+      } else if (type === "captacao") {
+        const captados = projects.filter(p => ["Aprovado", "Captado", "Execução", "Formalização"].includes(p.status));
+        exportLocalCsv("captacao.csv",
+          ["ID", "Nome", "Financiador", "Valor", "Status", "Prazo"],
+          captados.map(p => [p.id, p.nome, p.financiador, String(p.valor), p.status, p.prazo])
+        );
+      } else if (type === "audit-logs") {
+        exportLocalCsv("auditoria.csv",
+          ["Data", "Ação", "Entidade"],
+          auditLogs.map(l => [l.data, l.acao, l.entidade])
+        );
+      } else if (type === "lessons") {
+        exportLocalCsv("licoes.csv",
+          ["Projeto", "Lição"],
+          lessons.map(l => [l.projeto, l.licao])
+        );
+      }
+    } else {
+      try {
+        await apiClient.exportCsv(type as any);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Erro ao exportar");
+      }
+    }
+  };
+
+  const handleCreateLesson = async (l: { projeto: string; licao: string; categoria?: string }) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.createLesson(l);
+    const updated = await apiClient.getLessons();
+    setLessons(updated);
+  };
+
+  const handleUpdateLesson = async (id: string, l: { projeto?: string; licao?: string; categoria?: string }) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.updateLesson(id, l);
+    const updated = await apiClient.getLessons();
+    setLessons(updated);
+  };
+
+  const handleDeleteLesson = async (id: string) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.deleteLesson(id);
+    setLessons(prev => prev.filter(l => l.id !== id));
+  };
+
+  const alertCount = alerts.length;
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "pipeline", label: "Pipeline", icon: GitBranch },
     { id: "editais", label: "Editais", icon: Library },
-    { id: "alertas", label: "Alertas", icon: Bell },
+    { id: "alertas", label: "Alertas", icon: Bell, badge: alertCount },
     { id: "documentos", label: "Documentos", icon: Files },
     { id: "memoria", label: "Memória", icon: History },
     { id: "relatorios", label: "Relatórios", icon: BarChart3 },
@@ -1581,7 +2043,7 @@ export default function App() {
               key={item.id}
               onClick={() => { setView(item.id); setSelectedProject(null); }}
               className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-all uppercase tracking-widest",
+                "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-all uppercase tracking-widest relative",
                 view === item.id 
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" 
                   : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -1589,6 +2051,11 @@ export default function App() {
             >
               <item.icon className="w-4 h-4" />
               {item.label}
+              {item.badge != null && item.badge > 0 && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                  {item.badge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -1597,7 +2064,7 @@ export default function App() {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs">
-                {user?.name?.split(" ").map(n => n[0]).join("") || "U"}
+                {user?.name?.split(" ").map((n: string) => n[0]).join("") || "U"}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold truncate">{user?.name || "Usuário"}</p>
@@ -1624,16 +2091,31 @@ export default function App() {
               {view === "projeto" ? "Detalhes do Projeto" : navItems.find(n => n.id === view)?.label}
             </h2>
             {loading && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+            {isDemo && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase">Demo</span>}
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={fetchData}
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 uppercase tracking-widest transition-colors disabled:opacity-50"
+              title="Atualizar dados do servidor"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+              Atualizar
+            </button>
             <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
               <Calendar className="w-4 h-4" />
               {new Date().toLocaleDateString('pt-BR')}
             </div>
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors">
+            <button 
+              onClick={() => setView("alertas")}
+              className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors"
+            >
               <Bell className="w-5 h-5" />
-              {alerts.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+              {alertCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
+                  {alertCount}
+                </span>
               )}
             </button>
           </div>
@@ -1659,10 +2141,10 @@ export default function App() {
               {view === "dashboard" && <DashboardView projects={projects} alerts={alerts} onNav={setView} onProject={handleProjectSelect} />}
               {view === "pipeline" && <PipelineView projects={projects} onProject={handleProjectSelect} />}
               {view === "editais" && <EditaisView />}
-              {view === "alertas" && <AlertasView alerts={alerts} />}
-              {view === "documentos" && <DocumentosView documents={documents} />}
-              {view === "memoria" && <MemoriaView stats={stats} auditLogs={auditLogs} />}
-              {view === "relatorios" && <RelatoriosView />}
+              {view === "alertas" && <AlertasView alerts={alerts} onExportCsv={handleExportCsv} />}
+              {view === "documentos" && <DocumentosView documents={documents} onExportCsv={handleExportCsv} />}
+              {view === "memoria" && <MemoriaView stats={stats} auditLogs={auditLogs} lessons={lessons} onCreateLesson={handleCreateLesson} onUpdateLesson={handleUpdateLesson} onDeleteLesson={handleDeleteLesson} onExportCsv={handleExportCsv} />}
+              {view === "relatorios" && <RelatoriosView onExportCsv={handleExportCsv} />}
               {view === "projeto" && selectedProject && <ProjectDetailView project={selectedProject} onBack={handleBack} />}
             </motion.div>
           </AnimatePresence>

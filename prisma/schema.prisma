@@ -121,6 +121,9 @@ model Document {
   status    String
   validade  DateTime?
   url       String?
+  fileType  String?  // PDF, DOC, DOCX, XLS, XLSX, IMG, OTHER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ComplianceCheck {
@@ -141,6 +144,7 @@ model Alert {
   nivel     String   // N1, N2, N3, N4
   status    String   // PENDENTE, RESOLVIDO
   tipo      String   // DOCUMENTO, ORCAMENTO, CRONOGRAMA, GERAL
+  prazo     DateTime? // deadline date for calendar display
   lido      Boolean  @default(false)
   lidoEm    DateTime?
   lidoPor   String?
@@ -161,4 +165,14 @@ model AuditLog {
   antes      String?  // JSON string of data before change
   depois     String?  // JSON string of data after change
   data       DateTime @default(now())
+}
+
+model LessonLearned {
+  id        String   @id @default(uuid())
+  projeto   String
+  licao     String
+  categoria String?
+  autor     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

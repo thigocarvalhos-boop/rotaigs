@@ -1,5 +1,4 @@
 // src/api/client.ts
-import { Project, Alert, Document } from "../types";
 import { useAuthStore } from "../store/authStore";
 
 const API_BASE = "/api";
@@ -43,7 +42,6 @@ async function fetchWithRefresh(url: string, options: RequestInit): Promise<Resp
       if (!refreshRes.ok) throw new Error("refresh failed");
       const { accessToken } = await safeJson(refreshRes);
       useAuthStore.getState().setToken(accessToken);
-      // Retry original request with new token
       const retryOptions = {
         ...options,
         headers: {
@@ -60,6 +58,7 @@ async function fetchWithRefresh(url: string, options: RequestInit): Promise<Resp
 }
 
 export const apiClient = {
+  // --- Auth ---
   async login(email: string, password: string) {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
@@ -68,17 +67,17 @@ export const apiClient = {
     });
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Falha na autenticação");
-    // Servidor retorna accessToken + refreshToken
     return data;
   },
 
-  async getProjects(): Promise<Project[]> {
+  // --- Projects ---
+  async getProjects() {
     const res = await fetchWithRefresh(`${API_BASE}/projects`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar projetos");
     return safeJson(res);
   },
 
-  async createProject(project: Partial<Project>) {
+  async createProject(project: any) {
     const res = await fetchWithRefresh(`${API_BASE}/projects`, {
       method: "POST",
       headers: getHeaders(),
@@ -89,7 +88,29 @@ export const apiClient = {
     return data;
   },
 
-  async getAlerts(): Promise<Alert[]> {
+  async updateProject(id: string, project: any) {
+    const res = await fetchWithRefresh(`${API_BASE}/projects/${id}`, {
+      method: "PUT",
+      headers: getHeaders(),
+      body: JSON.stringify(project),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao atualizar projeto");
+    return data;
+  },
+
+  async deleteProject(id: string) {
+    const res = await fetchWithRefresh(`${API_BASE}/projects/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao excluir projeto");
+    return data;
+  },
+
+  // --- Alerts ---
+  async getAlerts() {
     const res = await fetchWithRefresh(`${API_BASE}/alerts`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar alertas");
     return safeJson(res);
@@ -115,6 +136,7 @@ export const apiClient = {
     return data;
   },
 
+  // --- Expenses ---
   async createExpense(expense: any) {
     const res = await fetchWithRefresh(`${API_BASE}/expenses`, {
       method: "POST",
@@ -124,6 +146,13 @@ export const apiClient = {
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error || "Erro ao processar despesa");
     return data;
+  },
+
+  // --- Documents ---
+  async getDocuments() {
+    const res = await fetchWithRefresh(`${API_BASE}/documents`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Erro ao buscar documentos");
+    return safeJson(res);
   },
 
   async uploadDocument(doc: any) {
@@ -137,24 +166,96 @@ export const apiClient = {
     return data;
   },
 
+  async updateDocument(id: string, doc: any) {
+    const res = await fetchWithRefresh(`${API_BASE}/documents/${id}`, {
+      method: "PUT",
+      headers: getHeaders(),
+      body: JSON.stringify(doc),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao atualizar documento");
+    return data;
+  },
+
+  async deleteDocument(id: string) {
+    const res = await fetchWithRefresh(`${API_BASE}/documents/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao excluir documento");
+    return data;
+  },
+
+  // --- Audit Logs ---
   async getAuditLogs() {
     const res = await fetchWithRefresh(`${API_BASE}/audit-logs`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar logs de auditoria");
     return safeJson(res);
   },
 
-  async getDocuments() {
-    const res = await fetchWithRefresh(`${API_BASE}/documents`, { headers: getHeaders() });
-    if (!res.ok) throw new Error("Erro ao buscar documentos");
-    return safeJson(res);
-  },
-
+  // --- Stats ---
   async getStats() {
     const res = await fetchWithRefresh(`${API_BASE}/stats`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar estatísticas");
     return safeJson(res);
   },
 
+  // --- Lessons Learned ---
+  async getLessons() {
+    const res = await fetchWithRefresh(`${API_BASE}/lessons`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Erro ao buscar lições aprendidas");
+    return safeJson(res);
+  },
+
+  async createLesson(lesson: { projeto: string; licao: string; categoria?: string }) {
+    const res = await fetchWithRefresh(`${API_BASE}/lessons`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(lesson),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao criar lição");
+    return data;
+  },
+
+  async updateLesson(id: string, lesson: { projeto?: string; licao?: string; categoria?: string }) {
+    const res = await fetchWithRefresh(`${API_BASE}/lessons/${id}`, {
+      method: "PUT",
+      headers: getHeaders(),
+      body: JSON.stringify(lesson),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao atualizar lição");
+    return data;
+  },
+
+  async deleteLesson(id: string) {
+    const res = await fetchWithRefresh(`${API_BASE}/lessons/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao excluir lição");
+    return data;
+  },
+
+  // --- CSV Exports ---
+  async exportCsv(type: "pipeline" | "captacao" | "documents" | "alerts" | "audit-logs" | "lessons") {
+    const res = await fetchWithRefresh(`${API_BASE}/export/${type}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Erro ao exportar CSV");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${type}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  // --- Health ---
   async getHealth() {
     const res = await fetch(`${API_BASE}/health`);
     return safeJson(res);

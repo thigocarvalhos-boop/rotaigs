@@ -42,6 +42,7 @@ export interface Document {
   status: "Aprovado" | "Pendente" | "Em Revisão" | "A Vencer" | "Vencido" | "Em Análise";
   validade: string | null;
   url?: string;
+  fileType?: string;
   project?: { id: string; nome: string };
   obrigatorio?: boolean;
   versao?: number;
@@ -174,4 +175,15 @@ export interface Alert {
   mensagem?: string;
   doc?: string;
   acaoRecomendada?: string;
+  prazoDate?: string; // ISO date for calendar
+}
+
+export interface LessonLearned {
+  id: string;
+  projeto: string;
+  licao: string;
+  categoria?: string;
+  autor?: string;
+  createdAt: string;
+  updatedAt: string;
 }
