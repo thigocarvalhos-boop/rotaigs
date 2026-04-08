@@ -278,8 +278,8 @@ function DashboardView({ projects, alerts, onNav, onProject }: { projects: Proje
         </Card>
         <Card className="border-l-4 border-l-emerald-500">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Conformidade Média</p>
-          <h3 className="text-2xl font-bold text-emerald-700 font-serif">{avgCompliance}%</h3>
-          <p className="text-xs text-slate-500 mt-1">Score médio de compliance</p>
+          <h3 className="text-2xl font-bold text-emerald-700 font-serif">{withCompliance.length > 0 ? `${avgCompliance}%` : "N/D"}</h3>
+          <p className="text-xs text-slate-500 mt-1">{withCompliance.length > 0 ? "Score médio de compliance" : "Disponível em modo demonstração"}</p>
         </Card>
       </div>
 
@@ -485,7 +485,7 @@ function PipelineView({ projects, onProject }: { projects: Project[]; onProject:
                     <RiskBadge risco={p.risco} />
                   </td>
                   <td className="py-4 px-6">
-                    <p className="text-xs text-slate-600 font-medium">{p.prazo.split("-").reverse().join("/")}</p>
+                    <p className="text-xs text-slate-600 font-medium">{new Date(p.prazo).toLocaleDateString("pt-BR")}</p>
                   </td>
                 </tr>
               ))}
@@ -621,7 +621,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><Library className="w-4 h-4" /> {project.financiador}</span>
               <span className="flex items-center gap-1.5"><GitBranch className="w-4 h-4" /> {project.area}</span>
-              <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" /> Prazo: {project.prazo.split("-").reverse().join("/")}</span>
+              <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" /> Prazo: {new Date(project.prazo).toLocaleDateString("pt-BR")}</span>
             </div>
           </div>
           <div className="text-right bg-slate-50 p-4 rounded-xl border border-slate-100 min-w-[200px]">
@@ -780,7 +780,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                   { label: "Edital / Chamamento", value: project.edital },
                   { label: "Público-Alvo", value: project.publico },
                   { label: "Território", value: project.territorio },
-                  { label: "Responsável", value: project.responsavel },
+                  { label: "Responsável", value: typeof project.responsavel === "object" ? (project.responsavel as any)?.name || "" : project.responsavel },
                   { label: "Competitividade", value: project.competitividade },
                   { label: "Aderência", value: "★".repeat(project.aderencia) + "☆".repeat(5 - project.aderencia) },
                 ].map(item => (
@@ -801,6 +801,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
 
           {activeTab === "analise" && (
             <div className="space-y-6">
+              {project.ptCriterios && project.ptCriterios.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card title="Parecer Técnico Interno (PTI)">
                   <div className="space-y-4">
@@ -841,6 +842,15 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                   </div>
                 </Card>
               </div>
+              ) : (
+                <Card title="Parecer Técnico Interno (PTI)">
+                  <div className="p-8 text-center border-2 border-dashed border-slate-100 rounded-xl">
+                    <TrendingUp className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-sm text-slate-400">Critérios PTI não disponíveis para este projeto.</p>
+                    <p className="text-[10px] text-slate-300 mt-1">Dados de análise técnica disponíveis apenas em modo demonstração.</p>
+                  </div>
+                </Card>
+              )}
 
               {/* Anti-glosa Section */}
               <Card 
@@ -848,8 +858,8 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                 action={
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Health Score:</span>
-                    <span className={cn("text-sm font-bold", (project.scoreCompliance || 0) > 80 ? "text-emerald-600" : "text-amber-600")}>
-                      {project.scoreCompliance}%
+                    <span className={cn("text-sm font-bold", project.scoreCompliance != null ? ((project.scoreCompliance || 0) > 80 ? "text-emerald-600" : "text-amber-600") : "text-slate-400")}>
+                      {project.scoreCompliance != null ? `${project.scoreCompliance}%` : "N/D"}
                     </span>
                   </div>
                 }
@@ -859,15 +869,17 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Risco de Glosa</p>
                       <div className="flex items-center gap-2">
-                        <span className={cn("text-xl font-bold", (project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600")}>
-                          {project.scoreRiscoGlosa}%
+                        <span className={cn("text-xl font-bold", project.scoreRiscoGlosa != null ? ((project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600") : "text-slate-400")}>
+                          {project.scoreRiscoGlosa != null ? `${project.scoreRiscoGlosa}%` : "N/D"}
                         </span>
+                        {project.scoreRiscoGlosa != null && (
                         <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <div 
                             className={cn("h-full", (project.scoreRiscoGlosa || 0) < 20 ? "bg-emerald-500" : "bg-red-500")} 
                             style={{ width: `${project.scoreRiscoGlosa}%` }} 
                           />
                         </div>
+                        )}
                       </div>
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -965,17 +977,17 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                 <Card className="bg-slate-50 border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Health Score</p>
                   <div className="flex items-end gap-2">
-                    <span className="text-3xl font-bold text-slate-900">{project.scoreCompliance}%</span>
-                    <span className="text-xs text-emerald-600 font-bold mb-1">Conforme</span>
+                    <span className={cn("text-3xl font-bold", project.scoreCompliance != null ? "text-slate-900" : "text-slate-300")}>{project.scoreCompliance != null ? `${project.scoreCompliance}%` : "N/D"}</span>
+                    {project.scoreCompliance != null && <span className="text-xs text-emerald-600 font-bold mb-1">Conforme</span>}
                   </div>
                 </Card>
                 <Card className="bg-slate-50 border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Risco de Glosa</p>
                   <div className="flex items-end gap-2">
-                    <span className={cn("text-3xl font-bold", (project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600")}>
-                      {project.scoreRiscoGlosa}%
+                    <span className={cn("text-3xl font-bold", project.scoreRiscoGlosa != null ? ((project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600") : "text-slate-300")}>
+                      {project.scoreRiscoGlosa != null ? `${project.scoreRiscoGlosa}%` : "N/D"}
                     </span>
-                    <span className="text-xs text-slate-500 font-medium mb-1">Calculado</span>
+                    <span className="text-xs text-slate-500 font-medium mb-1">{project.scoreRiscoGlosa != null ? "Calculado" : "Somente demonstração"}</span>
                   </div>
                 </Card>
                 <Card className="bg-slate-50 border-slate-100">
@@ -990,7 +1002,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
               </div>
 
               {/* Auditoria de Despesas */}
-              <Card title="Auditoria Preventiva de Despesas" action={<button className="text-xs font-bold text-indigo-600 hover:underline">Nova Despesa</button>}>
+              <Card title="Auditoria Preventiva de Despesas">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
@@ -999,7 +1011,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor</th>
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cotações</th>
-                        <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                        <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">ID</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -1171,6 +1183,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
           {activeTab === "historico" && (
             <div className="space-y-6">
               <Card title="Linha do Tempo Institucional">
+                {project.historico && project.historico.length > 0 ? (
                 <div className="relative pl-8 space-y-8 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
                   {project.historico.map((h, idx) => (
                     <div key={idx} className="relative">
@@ -1185,6 +1198,13 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
                     </div>
                   ))}
                 </div>
+                ) : (
+                  <div className="p-8 text-center border-2 border-dashed border-slate-100 rounded-xl">
+                    <History className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-sm text-slate-400">Histórico não disponível para este projeto.</p>
+                    <p className="text-[10px] text-slate-300 mt-1">Dados de histórico disponíveis apenas em modo demonstração.</p>
+                  </div>
+                )}
               </Card>
 
               {project.changeLog && project.changeLog.length > 0 && (
@@ -1284,7 +1304,7 @@ function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh
             <div className="space-y-3">
               <div className="border-b border-slate-50 pb-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Responsável</p>
-                <p className="text-sm text-slate-800 font-medium">{project.responsavel}</p>
+                <p className="text-sm text-slate-800 font-medium">{typeof project.responsavel === "object" ? (project.responsavel as any)?.name || "" : project.responsavel}</p>
               </div>
               <div className="border-b border-slate-50 pb-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Território</p>
