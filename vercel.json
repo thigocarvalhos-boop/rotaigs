@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "buildCommand": "npx prisma@6.4.1 generate && npx vite build",
+  "outputDirectory": "dist",
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
