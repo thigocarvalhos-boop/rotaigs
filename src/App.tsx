@@ -2252,7 +2252,9 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const [pData, aData, sData, lData, dData, lessonsData] = await Promise.all([
+      // Use allSettled so that permission errors (403) on restricted endpoints
+      // (e.g. /api/stats, /api/audit-logs) don't collapse the entire fetch into demo mode.
+      const [pRes, aRes, sRes, lRes, dRes, lessonsRes] = await Promise.allSettled([
         apiClient.getProjects(),
         apiClient.getAlerts(),
         apiClient.getStats(),
@@ -2260,14 +2262,39 @@ export default function App() {
         apiClient.getDocuments(),
         apiClient.getLessons()
       ]);
-      setProjects(pData);
-      setStats(sData);
-      setAuditLogs(lData);
-      setDocuments(dData);
-      setLessons(lessonsData);
-      setIsDemo(false);
 
-      const mappedAlerts: AlertType[] = aData.map((a: any) => {
+      // Projects is the primary indicator of server availability.
+      // If it fails with a network/server error, fall back to demo mode.
+      if (pRes.status === "rejected") {
+        const msg = pRes.reason instanceof Error ? pRes.reason.message : "";
+        const isNetworkError = msg === "Servidor indisponível" || msg === "Failed to fetch";
+        if (isNetworkError) {
+          console.warn("API indisponível, usando dados de demonstração.", pRes.reason);
+          setProjects(PROJECTS);
+          setAlerts(ALERTS);
+          setDocuments(PROJECTS.flatMap(p => p.docs));
+          setStats({ totalProjects: PROJECTS.length, approvedProjects: PROJECTS.filter(p => p.status === "Aprovado").length, totalValue: PROJECTS.reduce((s, p) => s + p.valor, 0), approvalRate: (PROJECTS.filter(p => p.status === "Aprovado").length / PROJECTS.length) * 100 });
+          setAuditLogs([]);
+          setLessons([]);
+          setIsDemo(true);
+          return;
+        }
+        // Non-network error (e.g. 500): show error but don't enter demo
+        setError("Erro ao carregar projetos. Tente novamente.");
+        setIsDemo(false);
+        return;
+      }
+
+      // Server is reachable — use real data, degrade gracefully per endpoint.
+      setIsDemo(false);
+      setProjects(pRes.value);
+      setStats(sRes.status === "fulfilled" ? sRes.value : null);
+      setAuditLogs(lRes.status === "fulfilled" ? lRes.value : []);
+      setDocuments(dRes.status === "fulfilled" ? dRes.value : []);
+      setLessons(lessonsRes.status === "fulfilled" ? lessonsRes.value : []);
+
+      const rawAlerts = aRes.status === "fulfilled" ? aRes.value : [];
+      const mappedAlerts: AlertType[] = rawAlerts.map((a: any) => {
         const prazoDate = a.prazo || null;
         const dias = prazoDate
           ? Math.max(0, Math.ceil((new Date(prazoDate).getTime() - Date.now()) / 86400000))
