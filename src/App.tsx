@@ -1348,6 +1348,12 @@ function LoginView() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoPrompt, setDemoPrompt] = useState(false);
+
+  const enterDemoMode = () => {
+    setToken("demo-token");
+    setUser({ id: "demo", name: "Modo Demo", email: "demo@rota.local", role: "LEITURA" });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1364,11 +1370,8 @@ function LoginView() {
         // Backend is up but credentials are wrong
         alert("Erro ao entrar: " + (err instanceof Error ? err.message : "Credenciais inválidas"));
       } catch {
-        // Backend is down — enable demo mode
-        if (confirm("Servidor indisponível. Deseja entrar em modo demonstração?")) {
-          setToken("demo-token");
-          setUser({ id: "demo", name: "Modo Demo", email: "demo@rota.local", role: "SUPER_ADMIN" });
-        }
+        // Backend is down — enable demo mode with read-only role
+        setDemoPrompt(true);
       }
     } finally {
       setLoading(false);
@@ -1423,6 +1426,51 @@ function LoginView() {
           </div>
         </div>
       </motion.div>
+
+      {/* Demo mode prompt */}
+      <AnimatePresence>
+        {demoPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modo demonstração"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-amber-500" />
+                <h3 className="text-lg font-bold text-slate-900">Servidor Indisponível</h3>
+              </div>
+              <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                Não foi possível conectar ao servidor. Deseja entrar em <strong>modo demonstração</strong> com dados de exemplo (somente leitura)?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDemoPrompt(false)}
+                  className="flex-1 py-3 border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={enterDemoMode}
+                  className="flex-1 py-3 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg"
+                  autoFocus
+                >
+                  Entrar Demo
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
