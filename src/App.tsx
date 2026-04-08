@@ -278,8 +278,8 @@ function DashboardView({ projects, alerts, onNav, onProject }: { projects: Proje
         </Card>
         <Card className="border-l-4 border-l-emerald-500">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Conformidade Média</p>
-          <h3 className="text-2xl font-bold text-emerald-700 font-serif">{avgCompliance}%</h3>
-          <p className="text-xs text-slate-500 mt-1">Score médio de compliance</p>
+          <h3 className="text-2xl font-bold text-emerald-700 font-serif">{withCompliance.length > 0 ? `${avgCompliance}%` : "N/D"}</h3>
+          <p className="text-xs text-slate-500 mt-1">{withCompliance.length > 0 ? "Score médio de compliance" : "Disponível em modo demonstração"}</p>
         </Card>
       </div>
 
@@ -485,7 +485,7 @@ function PipelineView({ projects, onProject }: { projects: Project[]; onProject:
                     <RiskBadge risco={p.risco} />
                   </td>
                   <td className="py-4 px-6">
-                    <p className="text-xs text-slate-600 font-medium">{p.prazo.split("-").reverse().join("/")}</p>
+                    <p className="text-xs text-slate-600 font-medium">{new Date(p.prazo).toLocaleDateString("pt-BR")}</p>
                   </td>
                 </tr>
               ))}
@@ -497,8 +497,83 @@ function PipelineView({ projects, onProject }: { projects: Project[]; onProject:
   );
 }
 
-function ProjectDetailView({ project, onBack }: { project: Project; onBack: () => void }) {
+function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh }: { project: Project; onBack: () => void; onUpdateProject?: (id: string, data: any) => Promise<void>; isDemo?: boolean; onRefresh?: () => Promise<void> }) {
   const [activeTab, setActiveTab] = useState("geral");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Edit form state
+  const [formNome, setFormNome] = useState(project.nome);
+  const [formEdital, setFormEdital] = useState(project.edital);
+  const [formFinanciador, setFormFinanciador] = useState(project.financiador);
+  const [formArea, setFormArea] = useState(project.area);
+  const [formValor, setFormValor] = useState(project.valor);
+  const [formStatus, setFormStatus] = useState<string>(project.status);
+  const [formPrazo, setFormPrazo] = useState(project.prazo?.split("T")[0] || "");
+  const [formProbabilidade, setFormProbabilidade] = useState(project.probabilidade);
+  const [formRisco, setFormRisco] = useState<string>(project.risco);
+  const [formAderencia, setFormAderencia] = useState(project.aderencia);
+  const [formTerritorio, setFormTerritorio] = useState(project.territorio);
+  const [formPublico, setFormPublico] = useState(project.publico);
+  const [formCompetitividade, setFormCompetitividade] = useState(project.competitividade);
+  const [formProximoPasso, setFormProximoPasso] = useState(project.proximoPasso || "");
+  const [formPtScore, setFormPtScore] = useState(project.ptScore);
+
+  const startEditing = () => {
+    setFormNome(project.nome);
+    setFormEdital(project.edital);
+    setFormFinanciador(project.financiador);
+    setFormArea(project.area);
+    setFormValor(project.valor);
+    setFormStatus(project.status);
+    setFormPrazo(project.prazo?.split("T")[0] || "");
+    setFormProbabilidade(project.probabilidade);
+    setFormRisco(project.risco);
+    setFormAderencia(project.aderencia);
+    setFormTerritorio(project.territorio);
+    setFormPublico(project.publico);
+    setFormCompetitividade(project.competitividade);
+    setFormProximoPasso(project.proximoPasso || "");
+    setFormPtScore(project.ptScore);
+    setEditing(true);
+    setActiveTab("geral");
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!onUpdateProject) return;
+    setSaving(true);
+    try {
+      await onUpdateProject(project.id, {
+        nome: formNome,
+        edital: formEdital,
+        financiador: formFinanciador,
+        area: formArea,
+        valor: formValor,
+        status: formStatus,
+        prazo: formPrazo ? `${formPrazo}T00:00:00Z` : undefined,
+        probabilidade: formProbabilidade,
+        risco: formRisco,
+        aderencia: formAderencia,
+        territorio: formTerritorio,
+        publico: formPublico,
+        competitividade: formCompetitividade,
+        proximoPasso: formProximoPasso,
+        ptScore: formPtScore,
+      });
+      setEditing(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao salvar projeto");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all";
+  const labelClass = "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block";
   
   const tabs = [
     { id: "geral", label: "Visão Geral", icon: Info },
@@ -527,12 +602,26 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
               <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{project.id}</span>
               <StatusBadge status={project.status} size="md" />
               <RiskBadge risco={project.risco} />
+              {onUpdateProject && !editing && (
+                <button
+                  onClick={startEditing}
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Editar Projeto
+                </button>
+              )}
+              {editing && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-widest">
+                  Modo Edição
+                </span>
+              )}
             </div>
             <h2 className="text-3xl font-bold text-slate-900 font-serif mb-2">{project.nome}</h2>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><Library className="w-4 h-4" /> {project.financiador}</span>
               <span className="flex items-center gap-1.5"><GitBranch className="w-4 h-4" /> {project.area}</span>
-              <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" /> Prazo: {project.prazo.split("-").reverse().join("/")}</span>
+              <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" /> Prazo: {new Date(project.prazo).toLocaleDateString("pt-BR")}</span>
             </div>
           </div>
           <div className="text-right bg-slate-50 p-4 rounded-xl border border-slate-100 min-w-[200px]">
@@ -578,14 +667,120 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
       {/* Tab Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {activeTab === "geral" && (
+          {activeTab === "geral" && editing && (
+            <Card title="Editar Projeto" action={
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelEditing}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !formNome.trim()}
+                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saving ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            }>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Nome do Projeto</label>
+                  <input type="text" value={formNome} onChange={e => setFormNome(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Edital / Chamamento</label>
+                  <input type="text" value={formEdital} onChange={e => setFormEdital(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Financiador</label>
+                  <input type="text" value={formFinanciador} onChange={e => setFormFinanciador(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Área</label>
+                  <input type="text" value={formArea} onChange={e => setFormArea(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Valor (R$)</label>
+                  <input type="number" value={formValor} onChange={e => setFormValor(Number(e.target.value))} min={0} step={0.01} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Status</label>
+                  <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={inputClass}>
+                    {Object.keys(STATUS_META).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Prazo</label>
+                  <input type="date" value={formPrazo} onChange={e => setFormPrazo(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Probabilidade (%)</label>
+                  <input type="number" value={formProbabilidade} onChange={e => setFormProbabilidade(Number(e.target.value))} min={0} max={100} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Risco</label>
+                  <select value={formRisco} onChange={e => setFormRisco(e.target.value)} className={inputClass}>
+                    <option value="Baixo">Baixo</option>
+                    <option value="Médio">Médio</option>
+                    <option value="Alto">Alto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Aderência (1-5)</label>
+                  <input type="number" value={formAderencia} onChange={e => setFormAderencia(Number(e.target.value))} min={1} max={5} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Score PTI</label>
+                  <input type="number" value={formPtScore} onChange={e => setFormPtScore(Number(e.target.value))} min={0} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Território</label>
+                  <input type="text" value={formTerritorio} onChange={e => setFormTerritorio(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Público-Alvo</label>
+                  <input type="text" value={formPublico} onChange={e => setFormPublico(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Competitividade</label>
+                  <input type="text" value={formCompetitividade} onChange={e => setFormCompetitividade(e.target.value)} className={inputClass} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Próximo Passo</label>
+                  <input type="text" value={formProximoPasso} onChange={e => setFormProximoPasso(e.target.value)} className={inputClass} />
+                </div>
+                {project.observacao && (
+                  <div className="md:col-span-2">
+                    <label className={labelClass}>
+                      Observação Estratégica
+                      {isDemo && <span className="ml-2 text-amber-500 normal-case tracking-normal">(somente mock)</span>}
+                    </label>
+                    <textarea
+                      value={project.observacao}
+                      readOnly
+                      className={cn(inputClass, "h-24 resize-none bg-slate-50 cursor-not-allowed text-slate-500")}
+                    />
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === "geral" && !editing && (
             <Card title="Informações Estratégicas">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
                 {[
                   { label: "Edital / Chamamento", value: project.edital },
                   { label: "Público-Alvo", value: project.publico },
                   { label: "Território", value: project.territorio },
-                  { label: "Responsável", value: project.responsavel },
+                  { label: "Responsável", value: typeof project.responsavel === "object" ? (project.responsavel as any)?.name || "" : project.responsavel },
                   { label: "Competitividade", value: project.competitividade },
                   { label: "Aderência", value: "★".repeat(project.aderencia) + "☆".repeat(5 - project.aderencia) },
                 ].map(item => (
@@ -606,6 +801,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
 
           {activeTab === "analise" && (
             <div className="space-y-6">
+              {project.ptCriterios && project.ptCriterios.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card title="Parecer Técnico Interno (PTI)">
                   <div className="space-y-4">
@@ -646,6 +842,15 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                   </div>
                 </Card>
               </div>
+              ) : (
+                <Card title="Parecer Técnico Interno (PTI)">
+                  <div className="p-8 text-center border-2 border-dashed border-slate-100 rounded-xl">
+                    <TrendingUp className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-sm text-slate-400">Critérios PTI não disponíveis para este projeto.</p>
+                    <p className="text-[10px] text-slate-300 mt-1">Dados de análise técnica disponíveis apenas em modo demonstração.</p>
+                  </div>
+                </Card>
+              )}
 
               {/* Anti-glosa Section */}
               <Card 
@@ -653,8 +858,8 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                 action={
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Health Score:</span>
-                    <span className={cn("text-sm font-bold", (project.scoreCompliance || 0) > 80 ? "text-emerald-600" : "text-amber-600")}>
-                      {project.scoreCompliance}%
+                    <span className={cn("text-sm font-bold", project.scoreCompliance != null ? ((project.scoreCompliance || 0) > 80 ? "text-emerald-600" : "text-amber-600") : "text-slate-400")}>
+                      {project.scoreCompliance != null ? `${project.scoreCompliance}%` : "N/D"}
                     </span>
                   </div>
                 }
@@ -664,15 +869,17 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Risco de Glosa</p>
                       <div className="flex items-center gap-2">
-                        <span className={cn("text-xl font-bold", (project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600")}>
-                          {project.scoreRiscoGlosa}%
+                        <span className={cn("text-xl font-bold", project.scoreRiscoGlosa != null ? ((project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600") : "text-slate-400")}>
+                          {project.scoreRiscoGlosa != null ? `${project.scoreRiscoGlosa}%` : "N/D"}
                         </span>
+                        {project.scoreRiscoGlosa != null && (
                         <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <div 
                             className={cn("h-full", (project.scoreRiscoGlosa || 0) < 20 ? "bg-emerald-500" : "bg-red-500")} 
                             style={{ width: `${project.scoreRiscoGlosa}%` }} 
                           />
                         </div>
+                        )}
                       </div>
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -770,17 +977,17 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                 <Card className="bg-slate-50 border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Health Score</p>
                   <div className="flex items-end gap-2">
-                    <span className="text-3xl font-bold text-slate-900">{project.scoreCompliance}%</span>
-                    <span className="text-xs text-emerald-600 font-bold mb-1">Conforme</span>
+                    <span className={cn("text-3xl font-bold", project.scoreCompliance != null ? "text-slate-900" : "text-slate-300")}>{project.scoreCompliance != null ? `${project.scoreCompliance}%` : "N/D"}</span>
+                    {project.scoreCompliance != null && <span className="text-xs text-emerald-600 font-bold mb-1">Conforme</span>}
                   </div>
                 </Card>
                 <Card className="bg-slate-50 border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Risco de Glosa</p>
                   <div className="flex items-end gap-2">
-                    <span className={cn("text-3xl font-bold", (project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600")}>
-                      {project.scoreRiscoGlosa}%
+                    <span className={cn("text-3xl font-bold", project.scoreRiscoGlosa != null ? ((project.scoreRiscoGlosa || 0) < 20 ? "text-emerald-600" : "text-red-600") : "text-slate-300")}>
+                      {project.scoreRiscoGlosa != null ? `${project.scoreRiscoGlosa}%` : "N/D"}
                     </span>
-                    <span className="text-xs text-slate-500 font-medium mb-1">Calculado</span>
+                    <span className="text-xs text-slate-500 font-medium mb-1">{project.scoreRiscoGlosa != null ? "Calculado" : "Somente demonstração"}</span>
                   </div>
                 </Card>
                 <Card className="bg-slate-50 border-slate-100">
@@ -795,7 +1002,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
               </div>
 
               {/* Auditoria de Despesas */}
-              <Card title="Auditoria Preventiva de Despesas" action={<button className="text-xs font-bold text-indigo-600 hover:underline">Nova Despesa</button>}>
+              <Card title="Auditoria Preventiva de Despesas">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
@@ -804,7 +1011,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Valor</th>
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                         <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cotações</th>
-                        <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                        <th className="py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">ID</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -976,6 +1183,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
           {activeTab === "historico" && (
             <div className="space-y-6">
               <Card title="Linha do Tempo Institucional">
+                {project.historico && project.historico.length > 0 ? (
                 <div className="relative pl-8 space-y-8 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
                   {project.historico.map((h, idx) => (
                     <div key={idx} className="relative">
@@ -990,6 +1198,13 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
                     </div>
                   ))}
                 </div>
+                ) : (
+                  <div className="p-8 text-center border-2 border-dashed border-slate-100 rounded-xl">
+                    <History className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-sm text-slate-400">Histórico não disponível para este projeto.</p>
+                    <p className="text-[10px] text-slate-300 mt-1">Dados de histórico disponíveis apenas em modo demonstração.</p>
+                  </div>
+                )}
               </Card>
 
               {project.changeLog && project.changeLog.length > 0 && (
@@ -1089,7 +1304,7 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
             <div className="space-y-3">
               <div className="border-b border-slate-50 pb-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Responsável</p>
-                <p className="text-sm text-slate-800 font-medium">{project.responsavel}</p>
+                <p className="text-sm text-slate-800 font-medium">{typeof project.responsavel === "object" ? (project.responsavel as any)?.name || "" : project.responsavel}</p>
               </div>
               <div className="border-b border-slate-50 pb-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Território</p>
@@ -1382,7 +1597,84 @@ function AlertasView({ alerts, onExportCsv }: { alerts: AlertType[]; onExportCsv
   );
 }
 
-function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExportCsv: (type: string) => void }) {
+function DocumentosView({ documents, projects, onCreateDocument, onUpdateDocument, onDeleteDocument, onExportCsv }: {
+  documents: any[];
+  projects: Project[];
+  onCreateDocument: (doc: { projectId: string; nome: string; url?: string; fileType?: string; validade?: string; status?: string }) => Promise<void>;
+  onUpdateDocument: (id: string, doc: { nome?: string; url?: string; fileType?: string; validade?: string; status?: string }) => Promise<void>;
+  onDeleteDocument: (id: string) => Promise<void>;
+  onExportCsv: (type: string) => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formNome, setFormNome] = useState("");
+  const [formUrl, setFormUrl] = useState("");
+  const [formFileType, setFormFileType] = useState("");
+  const [formValidade, setFormValidade] = useState("");
+  const [formProjectId, setFormProjectId] = useState("");
+  const [formStatus, setFormStatus] = useState("Pendente");
+  const [saving, setSaving] = useState(false);
+
+  const fileTypeOptions = ["PDF", "DOC", "DOCX", "XLS", "XLSX", "IMG", "OTHER"];
+  const statusOptions = ["Pendente", "Aprovado", "Em Revisão", "Em Análise"];
+
+  const startCreate = () => {
+    setEditingId(null);
+    setFormNome("");
+    setFormUrl("");
+    setFormFileType("");
+    setFormValidade("");
+    setFormProjectId(projects.length > 0 ? projects[0].id : "");
+    setFormStatus("Pendente");
+    setShowForm(true);
+  };
+
+  const startEdit = (doc: any) => {
+    setEditingId(doc.id);
+    setFormNome(doc.nome || "");
+    setFormUrl(doc.url || "");
+    setFormFileType(doc.fileType || "");
+    setFormValidade(doc.validade ? doc.validade.slice(0, 10) : "");
+    setFormStatus(doc.status || "Pendente");
+    setShowForm(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formNome.trim()) return;
+    if (!editingId && !formProjectId) return;
+    setSaving(true);
+    try {
+      if (editingId) {
+        await onUpdateDocument(editingId, {
+          nome: formNome,
+          url: formUrl || undefined,
+          fileType: formFileType || undefined,
+          validade: formValidade || undefined,
+          status: formStatus,
+        });
+      } else {
+        await onCreateDocument({
+          projectId: formProjectId,
+          nome: formNome,
+          url: formUrl || undefined,
+          fileType: formFileType || undefined,
+          validade: formValidade || undefined,
+          status: formStatus,
+        });
+      }
+      setShowForm(false);
+      setEditingId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao salvar documento");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputClass = "w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none";
+  const labelClass = "text-[10px] font-bold text-indigo-700 uppercase tracking-wider mb-1 block";
+  const selectClass = "w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1390,13 +1682,75 @@ function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExport
           <h2 className="text-2xl font-bold text-slate-900 font-serif">Gestão Documental</h2>
           <p className="text-slate-500 text-sm">Biblioteca institucional e certidões</p>
         </div>
-        <button 
-          onClick={() => onExportCsv("documents")}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-200 flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" /> Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={startCreate}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg shadow-indigo-200 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Novo Documento
+          </button>
+          <button 
+            onClick={() => onExportCsv("documents")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Exportar CSV
+          </button>
+        </div>
       </div>
+
+      {showForm && (
+        <div className="p-5 bg-indigo-50 rounded-xl border border-indigo-100 space-y-3">
+          <h4 className="text-xs font-bold text-indigo-800 uppercase">{editingId ? "Editar Documento" : "Novo Documento"}</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Nome *</label>
+              <input type="text" placeholder="Nome do documento" value={formNome} onChange={e => setFormNome(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>URL do documento</label>
+              <input type="url" placeholder="https://..." value={formUrl} onChange={e => setFormUrl(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Tipo de arquivo</label>
+              <select value={formFileType} onChange={e => setFormFileType(e.target.value)} className={selectClass}>
+                <option value="">Selecione...</option>
+                {fileTypeOptions.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Data de validade</label>
+              <input type="date" value={formValidade} onChange={e => setFormValidade(e.target.value)} className={inputClass} />
+            </div>
+            {!editingId && (
+              <div>
+                <label className={labelClass}>Projeto *</label>
+                <select value={formProjectId} onChange={e => setFormProjectId(e.target.value)} className={selectClass}>
+                  <option value="">Selecione...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className={labelClass}>Status</label>
+              <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={selectClass}>
+                {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSubmit}
+              disabled={saving || !formNome.trim() || (!editingId && !formProjectId)}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase disabled:opacity-50 flex items-center gap-1"
+            >
+              <Save className="w-3.5 h-3.5" /> {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-bold uppercase">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -1409,8 +1763,8 @@ function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExport
                   const expired = isDocExpired(doc.validade);
                   const expiring = isDocExpiringSoon(doc.validade);
                   return (
-                    <div key={idx} className={cn(
-                      "flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0",
+                    <div key={doc.id || idx} className={cn(
+                      "flex items-center justify-between p-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group",
                       expired && "bg-red-50/50",
                       expiring && !expired && "bg-amber-50/50"
                     )}>
@@ -1418,7 +1772,7 @@ function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExport
                         {getFileIcon(doc.fileType)}
                         <div>
                           <p className="text-sm font-bold text-slate-800">{doc.nome}</p>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className={cn("text-[10px] uppercase font-bold", expired ? "text-red-500" : expiring ? "text-amber-500" : "text-slate-400")}>
                               Validade: {doc.validade ? new Date(doc.validade).toLocaleDateString('pt-BR') : "Permanente"}
                               {expired && " — VENCIDO"}
@@ -1435,10 +1789,24 @@ function DocumentosView({ documents, onExportCsv }: { documents: any[]; onExport
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
                         <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded uppercase", docStatusColor(doc.status, doc.validade))}>
                           {docStatusLabel(doc.status, doc.validade)}
                         </span>
+                        <button
+                          onClick={() => startEdit(doc)}
+                          className="p-1.5 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Editar documento"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm("Excluir este documento?")) onDeleteDocument(doc.id); }}
+                          className="p-1.5 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Excluir documento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                         <button 
                           onClick={() => handleDocumentDownload(doc.url)}
                           className={cn("p-2 transition-colors", doc.url ? "text-slate-400 hover:text-indigo-600" : "text-slate-200 cursor-not-allowed")}
@@ -2006,6 +2374,33 @@ export default function App() {
     setLessons(prev => prev.filter(l => l.id !== id));
   };
 
+  const handleCreateDocument = async (doc: { projectId: string; nome: string; url?: string; fileType?: string; validade?: string; status?: string }) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.uploadDocument(doc);
+    const updated = await apiClient.getDocuments();
+    setDocuments(updated);
+  };
+
+  const handleUpdateDocument = async (id: string, doc: { nome?: string; url?: string; fileType?: string; validade?: string; status?: string }) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.updateDocument(id, doc);
+    const updated = await apiClient.getDocuments();
+    setDocuments(updated);
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.deleteDocument(id);
+    setDocuments(prev => prev.filter(d => d.id !== id));
+  };
+
+  const handleUpdateProject = async (id: string, data: any) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    const updated = await apiClient.updateProject(id, data);
+    await fetchData();
+    if (updated) setSelectedProject(updated);
+  };
+
   const alertCount = alerts.length;
 
   const navItems = [
@@ -2142,10 +2537,10 @@ export default function App() {
               {view === "pipeline" && <PipelineView projects={projects} onProject={handleProjectSelect} />}
               {view === "editais" && <EditaisView />}
               {view === "alertas" && <AlertasView alerts={alerts} onExportCsv={handleExportCsv} />}
-              {view === "documentos" && <DocumentosView documents={documents} onExportCsv={handleExportCsv} />}
+              {view === "documentos" && <DocumentosView documents={documents} projects={projects} onCreateDocument={handleCreateDocument} onUpdateDocument={handleUpdateDocument} onDeleteDocument={handleDeleteDocument} onExportCsv={handleExportCsv} />}
               {view === "memoria" && <MemoriaView stats={stats} auditLogs={auditLogs} lessons={lessons} onCreateLesson={handleCreateLesson} onUpdateLesson={handleUpdateLesson} onDeleteLesson={handleDeleteLesson} onExportCsv={handleExportCsv} />}
               {view === "relatorios" && <RelatoriosView onExportCsv={handleExportCsv} />}
-              {view === "projeto" && selectedProject && <ProjectDetailView project={selectedProject} onBack={handleBack} />}
+              {view === "projeto" && selectedProject && <ProjectDetailView project={selectedProject} onBack={handleBack} onUpdateProject={handleUpdateProject} isDemo={isDemo} onRefresh={fetchData} />}
             </motion.div>
           </AnimatePresence>
         </div>
