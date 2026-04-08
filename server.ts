@@ -32,100 +32,102 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  const dbUrl = process.env.DATABASE_URL;
+  const dbAvailable = dbUrl && (dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://"));
+
+  if (!dbAvailable) {
+    console.warn("⚠️  DATABASE_URL não configurada. A API estará indisponível — o frontend usará dados de demonstração.");
+  }
+
   // Seed Initial Data
-  const seedData = async () => {
-    const dbUrl = process.env.DATABASE_URL;
-    if (!dbUrl || (!dbUrl.startsWith("postgresql://") && !dbUrl.startsWith("postgres://"))) {
-      console.error("ERRO: DATABASE_URL não configurada ou formato inválido. Deve começar com 'postgresql://' ou 'postgres://'.");
-      return;
-    }
-
-    if (process.env.NODE_ENV === "production") {
-      console.warn("SEED: ignorado em ambiente de produção. Execute manualmente via npm run seed.");
-      return;
-    }
-
-    try {
-      const adminEmail = "admin@guiasocial.org";
-      let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
-      
-      if (!admin) {
-        const hashedPassword = await bcrypt.hash("admin123", 12);
-        admin = await prisma.user.create({
-          data: {
-            email: adminEmail,
-            password: hashedPassword,
-            name: "Administrador ROTA",
-            role: "SUPER_ADMIN"
-          }
-        });
-        console.log("Seed: Admin user created.");
+  if (dbAvailable) {
+    const seedData = async () => {
+      if (process.env.NODE_ENV === "production") {
+        console.warn("SEED: ignorado em ambiente de produção. Execute manualmente via npm run seed.");
+        return;
       }
 
-      const projectCount = await prisma.project.count();
-      if (projectCount === 0) {
-        const project = await prisma.project.create({
-          data: {
-            nome: "Guia Digital Teen 2026",
-            edital: "FMCA/COMDICA",
-            financiador: "Fundo Municipal da Criança",
-            area: "Digital",
-            valor: 320000,
-            status: "Inscrito",
-            prazo: new Date("2026-04-15"),
-            responsavelId: admin.id,
-            probabilidade: 72,
-            risco: "Médio",
-            aderencia: 5,
-            territorio: "RPA 6 — Pina / Ipsep",
-            publico: "Adolescentes 12–18 anos",
-            competitividade: "Alta",
-            proximoPasso: "Aguardar resultado do edital",
-            ptScore: 8,
-            metas: {
-              create: [
-                { descricao: "Certificar jovens em tecnologia", indicador: "Jovens certificados", meta: 500, alcancado: 380, unidade: "Jovens", budget: 150000 },
-                { descricao: "Inserção no mercado de trabalho", indicador: "Jovens empregados", meta: 50, alcancado: 12, unidade: "Jovens", budget: 100000 }
-              ]
-            },
-            etapas: {
-              create: [
-                { nome: "Mobilização", inicio: new Date("2026-01-01"), fim: new Date("2026-02-28"), status: "Concluído", peso: 20 },
-                { nome: "Execução das Aulas", inicio: new Date("2026-03-01"), fim: new Date("2026-07-31"), status: "Em curso", peso: 60 }
-              ]
-            },
-            docs: {
-              create: [
-                { nome: "Estatuto Social", status: "Aprovado", validade: null },
-                { nome: "CNPJ", status: "Aprovado", validade: null },
-                { nome: "CND Federal", status: "Aprovado", validade: new Date("2026-05-20") }
-              ]
+      try {
+        const adminEmail = "admin@guiasocial.org";
+        let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
+        
+        if (!admin) {
+          const hashedPassword = await bcrypt.hash("admin123", 12);
+          admin = await prisma.user.create({
+            data: {
+              email: adminEmail,
+              password: hashedPassword,
+              name: "Administrador ROTA",
+              role: "SUPER_ADMIN"
             }
-          }
-        });
+          });
+          console.log("Seed: Admin user created.");
+        }
 
-        await prisma.alert.create({
-          data: {
-            projectId: project.id,
-            titulo: "Documento Vencendo",
-            mensagem: "CND Municipal Recife vence em 15 dias.",
-            nivel: "N4",
-            status: "PENDENTE",
-            tipo: "DOCUMENTO"
-          }
-        });
+        const projectCount = await prisma.project.count();
+        if (projectCount === 0) {
+          const project = await prisma.project.create({
+            data: {
+              nome: "Guia Digital Teen 2026",
+              edital: "FMCA/COMDICA",
+              financiador: "Fundo Municipal da Criança",
+              area: "Digital",
+              valor: 320000,
+              status: "Inscrito",
+              prazo: new Date("2026-04-15"),
+              responsavelId: admin.id,
+              probabilidade: 72,
+              risco: "Médio",
+              aderencia: 5,
+              territorio: "RPA 6 — Pina / Ipsep",
+              publico: "Adolescentes 12–18 anos",
+              competitividade: "Alta",
+              proximoPasso: "Aguardar resultado do edital",
+              ptScore: 8,
+              metas: {
+                create: [
+                  { descricao: "Certificar jovens em tecnologia", indicador: "Jovens certificados", meta: 500, alcancado: 380, unidade: "Jovens", budget: 150000 },
+                  { descricao: "Inserção no mercado de trabalho", indicador: "Jovens empregados", meta: 50, alcancado: 12, unidade: "Jovens", budget: 100000 }
+                ]
+              },
+              etapas: {
+                create: [
+                  { nome: "Mobilização", inicio: new Date("2026-01-01"), fim: new Date("2026-02-28"), status: "Concluído", peso: 20 },
+                  { nome: "Execução das Aulas", inicio: new Date("2026-03-01"), fim: new Date("2026-07-31"), status: "Em curso", peso: 60 }
+                ]
+              },
+              docs: {
+                create: [
+                  { nome: "Estatuto Social", status: "Aprovado", validade: null },
+                  { nome: "CNPJ", status: "Aprovado", validade: null },
+                  { nome: "CND Federal", status: "Aprovado", validade: new Date("2026-05-20") }
+                ]
+              }
+            }
+          });
 
-        console.log("Seed: Initial project and alerts created.");
+          await prisma.alert.create({
+            data: {
+              projectId: project.id,
+              titulo: "Documento Vencendo",
+              mensagem: "CND Municipal Recife vence em 15 dias.",
+              nivel: "N4",
+              status: "PENDENTE",
+              tipo: "DOCUMENTO"
+            }
+          });
+
+          console.log("Seed: Initial project and alerts created.");
+        }
+      } catch (error) {
+        console.error("Seed: Erro ao popular dados iniciais. Verifique a conexão com o banco de dados.", error);
       }
-    } catch (error) {
-      console.error("Seed: Erro ao popular dados iniciais. Verifique a conexão com o banco de dados.", error);
-    }
-  };
-  await seedData();
+    };
+    await seedData();
+  }
 
   // Verificar expiração de documentos a cada hora
-  const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl && (dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://"))) {
+  if (dbAvailable) {
     try {
       await alertService.checkDocumentExpirations();
       setInterval(() => alertService.checkDocumentExpirations(), 60 * 60 * 1000);

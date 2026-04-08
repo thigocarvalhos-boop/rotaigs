@@ -37,7 +37,7 @@ import {
   Eye
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { B, EDITAIS } from "./mockData";
+import { B, EDITAIS, PROJECTS, ALERTS } from "./mockData";
 import { Project, ProjectStatus, Alert as AlertType, Edital } from "./types";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -1077,7 +1077,7 @@ function AlertasView({ alerts }: { alerts: AlertType[] }) {
                       <span className="text-lg font-bold font-serif" style={{ color: a.cor || "#64748b" }}>{a.dias ?? "?"}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo}</h4>
+                      <h4 className="text-sm font-bold text-slate-900 truncate">{a.titulo || a.projeto}</h4>
                       <p className="text-xs text-slate-500">{a.tipo}{a.mensagem ? ` — ${a.mensagem}` : ""}</p>
                     </div>
                     <div className="text-right">
@@ -1358,7 +1358,18 @@ function LoginView() {
       setRefreshToken(data.refreshToken);
       setUser(data.user);
     } catch (err) {
-      alert("Erro ao entrar: " + (err instanceof Error ? err.message : "Credenciais inválidas"));
+      // If the backend is unreachable, allow demo access with mock data
+      try {
+        await apiClient.getHealth();
+        // Backend is up but credentials are wrong
+        alert("Erro ao entrar: " + (err instanceof Error ? err.message : "Credenciais inválidas"));
+      } catch {
+        // Backend is down — enable demo mode
+        if (confirm("Servidor indisponível. Deseja entrar em modo demonstração?")) {
+          setToken("demo-token");
+          setUser({ id: "demo", name: "Modo Demo", email: "demo@rota.local", role: "SUPER_ADMIN" });
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -1461,11 +1472,19 @@ export default function App() {
           : Math.max(0, Math.ceil((new Date(a.createdAt).getTime() - Date.now()) / 86400000)),
         cor: a.nivel === "N4" ? B.red : a.nivel === "N3" ? B.orange : a.nivel === "N2" ? B.blue : B.gray,
         bgCor: a.nivel === "N4" ? B.redBg : a.nivel === "N3" ? B.orangeBg : a.nivel === "N2" ? B.blueBg : B.grayLight,
+        titulo: a.titulo,
         mensagem: a.mensagem
       }));
       setAlerts(mappedAlerts);
     } catch (err: any) {
-      setError(err.message || "Erro ao carregar dados");
+      console.warn("API indisponível, usando dados de demonstração.", err);
+      // Fallback to mock data so the site is usable without a database
+      setProjects(PROJECTS);
+      setAlerts(ALERTS);
+      setDocuments(PROJECTS.flatMap(p => p.docs));
+      setStats({ totalProjects: PROJECTS.length, approvedProjects: PROJECTS.filter(p => p.status === "Aprovado").length, totalValue: PROJECTS.reduce((s, p) => s + p.valor, 0), approvalRate: (PROJECTS.filter(p => p.status === "Aprovado").length / PROJECTS.length) * 100 });
+      setAuditLogs([]);
+      setError(null);
     } finally {
       setLoading(false);
     }
