@@ -1205,12 +1205,12 @@ function AlertasView({ alerts, onExportCsv }: { alerts: AlertType[]; onExportCsv
   const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
   const prevMonth = () => {
-    if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); }
-    else setCalMonth(m => m - 1);
+    if (calMonth === 0) { setCalMonth(11); setCalYear(prevYear => prevYear - 1); }
+    else setCalMonth(prevMo => prevMo - 1);
   };
   const nextMonth = () => {
-    if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); }
-    else setCalMonth(m => m + 1);
+    if (calMonth === 11) { setCalMonth(0); setCalYear(prevYear => prevYear + 1); }
+    else setCalMonth(prevMo => prevMo + 1);
   };
 
   const firstDayOfMonth = new Date(calYear, calMonth, 1).getDay();
@@ -1320,7 +1320,7 @@ function AlertasView({ alerts, onExportCsv }: { alerts: AlertType[]; onExportCsv
             </button>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((d, i) => <span key={`${d}-${i}`} className="text-[10px] font-bold text-slate-400 py-2">{d}</span>)}
+            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((dayName, index) => <span key={`${dayName}-${index}`} className="text-[10px] font-bold text-slate-400 py-2">{dayName}</span>)}
           </div>
           <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="aspect-square" />)}
