@@ -497,8 +497,83 @@ function PipelineView({ projects, onProject }: { projects: Project[]; onProject:
   );
 }
 
-function ProjectDetailView({ project, onBack }: { project: Project; onBack: () => void }) {
+function ProjectDetailView({ project, onBack, onUpdateProject, isDemo, onRefresh }: { project: Project; onBack: () => void; onUpdateProject?: (id: string, data: any) => Promise<void>; isDemo?: boolean; onRefresh?: () => Promise<void> }) {
   const [activeTab, setActiveTab] = useState("geral");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Edit form state
+  const [formNome, setFormNome] = useState(project.nome);
+  const [formEdital, setFormEdital] = useState(project.edital);
+  const [formFinanciador, setFormFinanciador] = useState(project.financiador);
+  const [formArea, setFormArea] = useState(project.area);
+  const [formValor, setFormValor] = useState(project.valor);
+  const [formStatus, setFormStatus] = useState<string>(project.status);
+  const [formPrazo, setFormPrazo] = useState(project.prazo?.split("T")[0] || "");
+  const [formProbabilidade, setFormProbabilidade] = useState(project.probabilidade);
+  const [formRisco, setFormRisco] = useState<string>(project.risco);
+  const [formAderencia, setFormAderencia] = useState(project.aderencia);
+  const [formTerritorio, setFormTerritorio] = useState(project.territorio);
+  const [formPublico, setFormPublico] = useState(project.publico);
+  const [formCompetitividade, setFormCompetitividade] = useState(project.competitividade);
+  const [formProximoPasso, setFormProximoPasso] = useState(project.proximoPasso || "");
+  const [formPtScore, setFormPtScore] = useState(project.ptScore);
+
+  const startEditing = () => {
+    setFormNome(project.nome);
+    setFormEdital(project.edital);
+    setFormFinanciador(project.financiador);
+    setFormArea(project.area);
+    setFormValor(project.valor);
+    setFormStatus(project.status);
+    setFormPrazo(project.prazo?.split("T")[0] || "");
+    setFormProbabilidade(project.probabilidade);
+    setFormRisco(project.risco);
+    setFormAderencia(project.aderencia);
+    setFormTerritorio(project.territorio);
+    setFormPublico(project.publico);
+    setFormCompetitividade(project.competitividade);
+    setFormProximoPasso(project.proximoPasso || "");
+    setFormPtScore(project.ptScore);
+    setEditing(true);
+    setActiveTab("geral");
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!onUpdateProject) return;
+    setSaving(true);
+    try {
+      await onUpdateProject(project.id, {
+        nome: formNome,
+        edital: formEdital,
+        financiador: formFinanciador,
+        area: formArea,
+        valor: formValor,
+        status: formStatus,
+        prazo: formPrazo ? new Date(formPrazo).toISOString() : undefined,
+        probabilidade: formProbabilidade,
+        risco: formRisco,
+        aderencia: formAderencia,
+        territorio: formTerritorio,
+        publico: formPublico,
+        competitividade: formCompetitividade,
+        proximoPasso: formProximoPasso,
+        ptScore: formPtScore,
+      });
+      setEditing(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao salvar projeto");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all";
+  const labelClass = "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block";
   
   const tabs = [
     { id: "geral", label: "Visão Geral", icon: Info },
@@ -527,6 +602,20 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
               <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{project.id}</span>
               <StatusBadge status={project.status} size="md" />
               <RiskBadge risco={project.risco} />
+              {onUpdateProject && !editing && (
+                <button
+                  onClick={startEditing}
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Editar Projeto
+                </button>
+              )}
+              {editing && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-widest">
+                  Modo Edição
+                </span>
+              )}
             </div>
             <h2 className="text-3xl font-bold text-slate-900 font-serif mb-2">{project.nome}</h2>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
@@ -578,7 +667,113 @@ function ProjectDetailView({ project, onBack }: { project: Project; onBack: () =
       {/* Tab Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {activeTab === "geral" && (
+          {activeTab === "geral" && editing && (
+            <Card title="Editar Projeto" action={
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelEditing}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !formNome.trim()}
+                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all uppercase tracking-widest"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saving ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            }>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Nome do Projeto</label>
+                  <input type="text" value={formNome} onChange={e => setFormNome(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Edital / Chamamento</label>
+                  <input type="text" value={formEdital} onChange={e => setFormEdital(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Financiador</label>
+                  <input type="text" value={formFinanciador} onChange={e => setFormFinanciador(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Área</label>
+                  <input type="text" value={formArea} onChange={e => setFormArea(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Valor (R$)</label>
+                  <input type="number" value={formValor} onChange={e => setFormValor(Number(e.target.value))} min={0} step={0.01} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Status</label>
+                  <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={inputClass}>
+                    {Object.keys(STATUS_META).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Prazo</label>
+                  <input type="date" value={formPrazo} onChange={e => setFormPrazo(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Probabilidade (%)</label>
+                  <input type="number" value={formProbabilidade} onChange={e => setFormProbabilidade(Number(e.target.value))} min={0} max={100} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Risco</label>
+                  <select value={formRisco} onChange={e => setFormRisco(e.target.value)} className={inputClass}>
+                    <option value="Baixo">Baixo</option>
+                    <option value="Médio">Médio</option>
+                    <option value="Alto">Alto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Aderência (1-5)</label>
+                  <input type="number" value={formAderencia} onChange={e => setFormAderencia(Number(e.target.value))} min={1} max={5} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Score PTI</label>
+                  <input type="number" value={formPtScore} onChange={e => setFormPtScore(Number(e.target.value))} min={0} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Território</label>
+                  <input type="text" value={formTerritorio} onChange={e => setFormTerritorio(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Público-Alvo</label>
+                  <input type="text" value={formPublico} onChange={e => setFormPublico(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Competitividade</label>
+                  <input type="text" value={formCompetitividade} onChange={e => setFormCompetitividade(e.target.value)} className={inputClass} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className={labelClass}>Próximo Passo</label>
+                  <input type="text" value={formProximoPasso} onChange={e => setFormProximoPasso(e.target.value)} className={inputClass} />
+                </div>
+                {project.observacao && (
+                  <div className="md:col-span-2">
+                    <label className={labelClass}>
+                      Observação Estratégica
+                      {isDemo && <span className="ml-2 text-amber-500 normal-case tracking-normal">(somente mock)</span>}
+                    </label>
+                    <textarea
+                      value={project.observacao}
+                      readOnly
+                      className={cn(inputClass, "h-24 resize-none bg-slate-50 cursor-not-allowed text-slate-500")}
+                    />
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === "geral" && !editing && (
             <Card title="Informações Estratégicas">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
                 {[
@@ -2006,6 +2201,15 @@ export default function App() {
     setLessons(prev => prev.filter(l => l.id !== id));
   };
 
+  const handleUpdateProject = async (id: string, data: any) => {
+    if (isDemo) { alert("Operação indisponível no modo demonstração."); return; }
+    await apiClient.updateProject(id, data);
+    await fetchData();
+    const updatedProjects = await apiClient.getProjects();
+    const updated = updatedProjects.find((p: Project) => p.id === id);
+    if (updated) setSelectedProject(updated);
+  };
+
   const alertCount = alerts.length;
 
   const navItems = [
@@ -2145,7 +2349,7 @@ export default function App() {
               {view === "documentos" && <DocumentosView documents={documents} onExportCsv={handleExportCsv} />}
               {view === "memoria" && <MemoriaView stats={stats} auditLogs={auditLogs} lessons={lessons} onCreateLesson={handleCreateLesson} onUpdateLesson={handleUpdateLesson} onDeleteLesson={handleDeleteLesson} onExportCsv={handleExportCsv} />}
               {view === "relatorios" && <RelatoriosView onExportCsv={handleExportCsv} />}
-              {view === "projeto" && selectedProject && <ProjectDetailView project={selectedProject} onBack={handleBack} />}
+              {view === "projeto" && selectedProject && <ProjectDetailView project={selectedProject} onBack={handleBack} onUpdateProject={handleUpdateProject} isDemo={isDemo} onRefresh={fetchData} />}
             </motion.div>
           </AnimatePresence>
         </div>
