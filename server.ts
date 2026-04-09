@@ -134,7 +134,11 @@ async function startServer() {
         let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
         
         if (!admin) {
-          const defaultPw = process.env.ADMIN_DEFAULT_PASSWORD || "admin123";
+          const defaultPw = process.env.ADMIN_DEFAULT_PASSWORD;
+          if (!defaultPw) {
+            console.error("SEED: ADMIN_DEFAULT_PASSWORD não definida. Não é possível criar admin sem senha segura.");
+            return;
+          }
           const hashedPassword = await bcrypt.hash(defaultPw, 12);
           admin = await prisma.user.create({
             data: {
@@ -285,7 +289,7 @@ async function startServer() {
   // ============================================
   app.post("/api/auth/login", loginLimiter, [
     body("email").isEmail().withMessage("E-mail inválido"),
-    body("password").isLength({ min: 6 }).withMessage("Senha deve ter no mínimo 6 caracteres")
+    body("password").isLength({ min: 8 }).withMessage("Senha deve ter no mínimo 8 caracteres")
   ], async (req: any, res: any) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
