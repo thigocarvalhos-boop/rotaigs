@@ -1,6 +1,8 @@
 import { prisma } from "../_lib/prisma.js";
 import { authenticate, sanitizeString } from "../_lib/auth.js";
 
+const MAX_LESSONS_LIMIT = 200;
+
 export default async function handler(req: any, res: any) {
   const user = authenticate(req, res);
   if (!user) return;
@@ -10,7 +12,7 @@ export default async function handler(req: any, res: any) {
     try {
       const lessons = await prisma.lessonLearned.findMany({
         orderBy: { createdAt: "desc" },
-        take: 200,
+        take: MAX_LESSONS_LIMIT,
       });
       return res.json(lessons);
     } catch (error) {

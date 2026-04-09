@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { B } from "../mockData";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -79,7 +80,7 @@ export function handleDocumentDownload(url?: string | null) {
   }
 }
 
-import { B } from "../mockData";
+export const AREA_COLORS = ["#1A7C7E", "#E8A020", "#7C3AED", "#0369A1", "#059669", "#DC2626", "#D97706", "#374151"];
 
 export const STATUS_META: Record<string, { color: string; bg: string; label: string }> = {
   "Oportunidade":    { color: B.gray,     bg: B.grayLight,   label: "Oportunidade" },
@@ -96,5 +97,3 @@ export const STATUS_META: Record<string, { color: string; bg: string; label: str
   "Execução":        { color: B.purple,   bg: B.purpleBg,    label: "Em Execução" },
   "Concluído":       { color: B.charcoal, bg: "#F9FAFB",     label: "Concluído" },
 };
-
-export const AREA_COLORS = ["#1A7C7E", "#E8A020", "#7C3AED", "#0369A1", "#059669", "#DC2626", "#D97706", "#374151"];
