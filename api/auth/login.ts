@@ -17,6 +17,14 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Email e senha são obrigatórios" });
   }
 
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({ error: "Dados inválidos" });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Senha deve ter no mínimo 6 caracteres" });
+  }
+
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: "Credenciais inválidas" });
@@ -27,12 +35,12 @@ export default async function handler(req: any, res: any) {
     const accessToken = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "15m", algorithm: "HS256" }
     );
     const refreshToken = jwt.sign(
       { id: user.id },
       JWT_REFRESH_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: "HS256" }
     );
 
     await auditService.log({
@@ -49,13 +57,6 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error) {
     console.error("[POST /api/auth/login]", error);
-    const msg = error instanceof Error ? error.message : "";
-    if (msg.includes("Can't reach database") || msg.includes("connect")) {
-      return res.status(500).json({ error: "Não foi possível conectar ao banco de dados. Verifique DATABASE_URL." });
-    }
-    if (msg.includes("does not exist") || msg.includes("relation")) {
-      return res.status(500).json({ error: "Tabelas não encontradas. Execute as migrations do Prisma." });
-    }
     res.status(500).json({ error: "Erro interno no servidor" });
   }
 }

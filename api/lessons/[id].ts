@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/prisma.js";
-import { authenticate } from "../_lib/auth.js";
+import { authenticate, sanitizeString } from "../_lib/auth.js";
 
 export default async function handler(req: any, res: any) {
   const user = authenticate(req, res);
@@ -14,9 +14,9 @@ export default async function handler(req: any, res: any) {
       const lesson = await prisma.lessonLearned.update({
         where: { id },
         data: {
-          ...(projeto !== undefined && { projeto }),
-          ...(licao !== undefined && { licao }),
-          ...(categoria !== undefined && { categoria: categoria || null }),
+          ...(projeto !== undefined && { projeto: sanitizeString(projeto, 200) }),
+          ...(licao !== undefined && { licao: sanitizeString(licao, 2000) }),
+          ...(categoria !== undefined && { categoria: categoria ? sanitizeString(categoria, 100) : null }),
         },
       });
       return res.json(lesson);

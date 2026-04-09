@@ -134,7 +134,11 @@ async function startServer() {
         let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
         
         if (!admin) {
-          const defaultPw = process.env.ADMIN_DEFAULT_PASSWORD || "admin123";
+          const defaultPw = process.env.ADMIN_DEFAULT_PASSWORD;
+          if (!defaultPw) {
+            console.error("SEED: ADMIN_DEFAULT_PASSWORD não definida. Não é possível criar admin sem senha segura.");
+            return;
+          }
           const hashedPassword = await bcrypt.hash(defaultPw, 12);
           admin = await prisma.user.create({
             data: {
