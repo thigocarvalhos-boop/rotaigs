@@ -28,6 +28,7 @@ const { default: handler } = await import('../../api/auth/login');
 function createMockRes() {
   let statusCode = 200;
   let body: any = null;
+  const headers: Record<string, string> = {};
   const res: any = {
     status: (code: number) => {
       statusCode = code;
@@ -37,44 +38,59 @@ function createMockRes() {
       body = data;
       return res;
     },
+    setHeader: (name: string, value: string) => {
+      headers[name] = value;
+      return res;
+    },
     end: () => res,
     getStatusCode: () => statusCode,
     getBody: () => body,
+    getHeaders: () => headers,
   };
   return res;
+}
+
+// Each test needs a unique IP to avoid rate limiting interference
+let testIpCounter = 0;
+function mockReq(overrides: any = {}) {
+  testIpCounter++;
+  return {
+    headers: { 'x-forwarded-for': `10.0.0.${testIpCounter}` },
+    ...overrides,
+  };
 }
 
 describe('POST /api/auth/login', () => {
   it('rejects non-POST methods', async () => {
     const res = createMockRes();
-    await handler({ method: 'GET', body: {} }, res);
+    await handler(mockReq({ method: 'GET', body: {} }), res);
     expect(res.getStatusCode()).toBe(405);
   });
 
   it('rejects missing email/password', async () => {
     const res = createMockRes();
-    await handler({ method: 'POST', body: {} }, res);
+    await handler(mockReq({ method: 'POST', body: {} }), res);
     expect(res.getStatusCode()).toBe(400);
     expect(res.getBody().error).toContain('obrigatórios');
   });
 
   it('rejects non-string email', async () => {
     const res = createMockRes();
-    await handler({ method: 'POST', body: { email: 123, password: 'password1234' } }, res);
+    await handler(mockReq({ method: 'POST', body: { email: 123, password: 'password1234' } }), res);
     expect(res.getStatusCode()).toBe(400);
     expect(res.getBody().error).toContain('inválidos');
   });
 
   it('rejects non-string password', async () => {
     const res = createMockRes();
-    await handler({ method: 'POST', body: { email: 'test@test.com', password: 12345678 } }, res);
+    await handler(mockReq({ method: 'POST', body: { email: 'test@test.com', password: 12345678 } }), res);
     expect(res.getStatusCode()).toBe(400);
     expect(res.getBody().error).toContain('inválidos');
   });
 
   it('rejects short password (< 8 chars)', async () => {
     const res = createMockRes();
-    await handler({ method: 'POST', body: { email: 'test@test.com', password: 'short' } }, res);
+    await handler(mockReq({ method: 'POST', body: { email: 'test@test.com', password: 'short' } }), res);
     expect(res.getStatusCode()).toBe(400);
     expect(res.getBody().error).toContain('8 caracteres');
   });
@@ -85,7 +101,7 @@ describe('POST /api/auth/login', () => {
 
     const res = createMockRes();
     await handler(
-      { method: 'POST', body: { email: 'noone@test.com', password: 'password1234' } },
+      mockReq({ method: 'POST', body: { email: 'noone@test.com', password: 'password1234' } }),
       res
     );
     expect(res.getStatusCode()).toBe(401);
@@ -106,7 +122,7 @@ describe('POST /api/auth/login', () => {
 
     const res = createMockRes();
     await handler(
-      { method: 'POST', body: { email: 'admin@test.com', password: 'wrongpassword' } },
+      mockReq({ method: 'POST', body: { email: 'admin@test.com', password: 'wrongpassword' } }),
       res
     );
     expect(res.getStatusCode()).toBe(401);
@@ -127,7 +143,7 @@ describe('POST /api/auth/login', () => {
 
     const res = createMockRes();
     await handler(
-      { method: 'POST', body: { email: 'admin@test.com', password: 'correctpassword' } },
+      mockReq({ method: 'POST', body: { email: 'admin@test.com', password: 'correctpassword' } }),
       res
     );
     expect(res.getStatusCode()).toBe(200);

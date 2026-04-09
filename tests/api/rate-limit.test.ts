@@ -29,15 +29,15 @@ describe('rateLimit', () => {
     expect(result.retryAfterMs).toBeGreaterThan(0);
   });
 
-  it('resets after window expires', () => {
+  it('resets after window expires', async () => {
     const key = uniqueKey();
-    // Fill up the limit with a tiny window
+    // Fill up the limit with a 50ms window
     for (let i = 0; i < 3; i++) {
-      rateLimit(key, 3, 1); // 1ms window
+      rateLimit(key, 3, 50);
     }
     // Wait for window to expire
-    const result = rateLimit(key, 3, 1);
-    // With 1ms window, the entry should have expired
+    await new Promise(resolve => setTimeout(resolve, 60));
+    const result = rateLimit(key, 3, 50);
     expect(result.allowed).toBe(true);
   });
 
