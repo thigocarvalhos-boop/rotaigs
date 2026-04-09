@@ -289,7 +289,7 @@ async function startServer() {
   // ============================================
   app.post("/api/auth/login", loginLimiter, [
     body("email").isEmail().withMessage("E-mail inválido"),
-    body("password").isLength({ min: 6 }).withMessage("Senha deve ter no mínimo 6 caracteres")
+    body("password").isLength({ min: 8 }).withMessage("Senha deve ter no mínimo 8 caracteres")
   ], async (req: any, res: any) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });

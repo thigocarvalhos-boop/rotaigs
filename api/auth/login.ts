@@ -21,8 +21,8 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Dados inválidos" });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Senha deve ter no mínimo 6 caracteres" });
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Senha deve ter no mínimo 8 caracteres" });
   }
 
   try {

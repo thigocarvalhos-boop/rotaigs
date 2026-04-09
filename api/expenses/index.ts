@@ -12,13 +12,13 @@ export default async function handler(req: any, res: any) {
 
   const { projectId, descricao, valor, vincMetaId, vincEtapaId, cotacoes, data, categoria } = req.body || {};
 
-  if (!projectId || !descricao || !valor || !data || !categoria) {
-    return res.status(400).json({ error: "Campos obrigatórios: projectId, descricao, valor, data, categoria" });
-  }
-
   const sanitizedDescricao = sanitizeString(descricao, 500);
   const sanitizedCategoria = sanitizeString(categoria, 100);
-  const sanitizedValor = sanitizeNumber(valor, 0.01);
+  const sanitizedValor = sanitizeNumber(valor, 0);
+
+  if (!projectId || !sanitizedDescricao || sanitizedValor <= 0 || !data || !sanitizedCategoria) {
+    return res.status(400).json({ error: "Campos obrigatórios: projectId, descricao, valor, data, categoria" });
+  }
 
   try {
     if (!vincMetaId || !vincEtapaId) {
