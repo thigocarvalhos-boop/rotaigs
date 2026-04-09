@@ -3,9 +3,25 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../_lib/prisma.js";
 import { auditService } from "../_lib/audit.js";
 import { JWT_SECRET, JWT_REFRESH_SECRET } from "../_lib/auth.js";
+import { rateLimit, getClientIp } from "../_lib/rate-limit.js";
+
+// Login: 5 attempts per 15-minute window per IP
+const LOGIN_RATE_LIMIT = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+
+  // Rate limit by IP
+  const ip = getClientIp(req);
+  const { allowed, retryAfterMs } = rateLimit(ip, LOGIN_RATE_LIMIT, LOGIN_WINDOW_MS);
+  if (!allowed) {
+    res.setHeader("Retry-After", Math.ceil(retryAfterMs / 1000));
+    return res.status(429).json({
+      error: "Muitas tentativas de login. Tente novamente mais tarde.",
+      retryAfterSeconds: Math.ceil(retryAfterMs / 1000),
+    });
+  }
 
   if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
     console.error("[POST /api/auth/login] JWT_SECRET ou JWT_REFRESH_SECRET não configurados");
