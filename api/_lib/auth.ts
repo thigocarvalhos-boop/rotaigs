@@ -9,6 +9,7 @@ export const PERMISSIONS: Record<string, string[]> = {
   "expenses:create":  ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "FINANCEIRO"],
   "documents:create": ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "DOCUMENTAL"],
   "documents:update": ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "DOCUMENTAL"],
+  "documents:delete": ["SUPER_ADMIN", "DIRETORIA"],
   "audit-logs:read":  ["SUPER_ADMIN", "DIRETORIA", "MONITORAMENTO"],
   "alerts:read":      ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "MONITORAMENTO", "FINANCEIRO", "ELABORADOR"],
   "projects:create":  ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO"],

@@ -45,9 +45,9 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // DELETE /api/documents/:id — uses documents:update permission (consistent with original behavior)
+  // DELETE /api/documents/:id — requires documents:delete permission
   if (req.method === "DELETE") {
-    if (!can(user, "documents:update", res)) return;
+    if (!can(user, "documents:delete", res)) return;
     try {
       const doc = await prisma.document.findUnique({ where: { id } });
       if (!doc) return res.status(404).json({ error: "Documento não encontrado" });
