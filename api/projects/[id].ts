@@ -70,15 +70,17 @@ export default async function handler(req: any, res: any) {
       const before = await prisma.project.findUnique({ where: { id } });
       if (!before) return res.status(404).json({ error: "Projeto não encontrado" });
 
-      await prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } });
-      await prisma.expense.deleteMany({ where: { projectId: id } });
-      await prisma.meta.deleteMany({ where: { projectId: id } });
-      await prisma.etapa.deleteMany({ where: { projectId: id } });
-      await prisma.document.deleteMany({ where: { projectId: id } });
-      await prisma.complianceCheck.deleteMany({ where: { projectId: id } });
-      await prisma.alert.deleteMany({ where: { projectId: id } });
-      await prisma.auditLog.deleteMany({ where: { projectId: id } });
-      await prisma.project.delete({ where: { id } });
+      await prisma.$transaction([
+        prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } }),
+        prisma.expense.deleteMany({ where: { projectId: id } }),
+        prisma.meta.deleteMany({ where: { projectId: id } }),
+        prisma.etapa.deleteMany({ where: { projectId: id } }),
+        prisma.document.deleteMany({ where: { projectId: id } }),
+        prisma.complianceCheck.deleteMany({ where: { projectId: id } }),
+        prisma.alert.deleteMany({ where: { projectId: id } }),
+        prisma.auditLog.deleteMany({ where: { projectId: id } }),
+        prisma.project.delete({ where: { id } }),
+      ]);
 
       // Log deletion after all records removed; omit projectId so the entry persists
       await auditService.log({

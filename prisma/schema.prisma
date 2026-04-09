@@ -63,6 +63,9 @@ model Project {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([responsavelId])
+  @@index([status])
 }
 
 model Meta {
@@ -75,6 +78,8 @@ model Meta {
   alcancado Float
   unidade   String
   budget    Float    @default(0)
+
+  @@index([projectId])
 }
 
 model Etapa {
@@ -86,6 +91,8 @@ model Etapa {
   fim       DateTime
   status    String
   peso      Float
+
+  @@index([projectId])
 }
 
 model Expense {
@@ -101,6 +108,9 @@ model Expense {
   vincMetaId  String
   vincEtapaId String
   cotacoes    Cotacao[]
+
+  @@index([projectId])
+  @@index([vincMetaId])
 }
 
 model Cotacao {
@@ -112,6 +122,8 @@ model Cotacao {
   data        DateTime
   vencedora   Boolean
   docUrl      String?
+
+  @@index([expenseId])
 }
 
 model Document {
@@ -125,6 +137,9 @@ model Document {
   fileType  String?  // PDF, DOC, DOCX, XLS, XLSX, IMG, OTHER
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
 }
 
 model ComplianceCheck {
@@ -134,6 +149,8 @@ model ComplianceCheck {
   item      String
   status    String
   data      DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model Alert {
@@ -152,6 +169,9 @@ model Alert {
   resolucao String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
 }
 
 model AuditLog {
@@ -166,6 +186,10 @@ model AuditLog {
   antes      String?  // JSON string of data before change
   depois     String?  // JSON string of data after change
   data       DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([data])
 }
 
 model LessonLearned {
