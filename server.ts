@@ -12,6 +12,31 @@ import { prisma } from "./src/lib/prisma";
 import { auditService } from "./src/services/auditService";
 import { alertService } from "./src/services/alertService";
 
+// ============================================
+// SAFE DOCUMENT-EXPIRATION CHECK
+// Prevents crash-loops when Document table is absent (P2021)
+// and guards against concurrent executions.
+// ============================================
+const DOCUMENT_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+let _isCheckingDocumentExpirations = false;
+
+async function safelyCheckDocumentExpirations(): Promise<void> {
+  if (_isCheckingDocumentExpirations) return;
+  _isCheckingDocumentExpirations = true;
+  try {
+    await alertService.checkDocumentExpirations();
+  } catch (error) {
+    // alertService already intercepts P2021 and returns; anything reaching here
+    // is a truly unexpected error — log it but do NOT crash the process.
+    console.error(
+      "[AlertService] Erro inesperado ao verificar expirações de documentos. A aplicação continuará operacional.",
+      error
+    );
+  } finally {
+    _isCheckingDocumentExpirations = false;
+  }
+}
+
 // Extend Express Request type
 declare global {
   namespace Express {
@@ -227,16 +252,10 @@ async function startServer() {
 
   // Verificar expiração de documentos a cada hora
   if (dbAvailable) {
-    try {
-      await alertService.checkDocumentExpirations();
-    } catch (error) {
-      console.error("[AlertService] Erro ao verificar expirações no boot. O servidor continuará operacional.", error);
-    }
+    await safelyCheckDocumentExpirations();
     setInterval(() => {
-      alertService.checkDocumentExpirations().catch((err) => {
-        console.error("[AlertService] Erro no ciclo periódico de verificação de expirações:", err);
-      });
-    }, 60 * 60 * 1000);
+      void safelyCheckDocumentExpirations();
+    }, DOCUMENT_CHECK_INTERVAL_MS);
   }
 
   // ============================================
