@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "DATABASE_URL='postgresql://placeholder:placeholder@localhost:5432/placeholder' npx prisma@6.4.1 generate && npx vite build",
+  "buildCommand": "DATABASE_URL='postgresql://placeholder:placeholder@localhost:5432/placeholder' npx prisma@6.4.1 generate && npx prisma@6.4.1 migrate deploy && npx vite build",
   "outputDirectory": "dist",
   "routes": [
     { "handle": "filesystem" },
