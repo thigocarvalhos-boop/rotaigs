@@ -34,6 +34,7 @@ const DocumentosView = lazy(() => import("./views/DocumentosView"));
 const MemoriaView = lazy(() => import("./views/MemoriaView"));
 const RelatoriosView = lazy(() => import("./views/RelatoriosView"));
 const LoginView = lazy(() => import("./views/LoginView"));
+const SetupView = lazy(() => import("./views/SetupView"));
 
 function ViewFallback() {
   return (
@@ -60,6 +61,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDemo, setIsDemo] = useState(false);
+  // null = unknown (checking), true = needs setup, false = setup done
+  const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -148,7 +151,25 @@ export default function App() {
     }
   }, [token, fetchData]);
 
-  if (!token) return <Suspense fallback={<ViewFallback />}><LoginView /></Suspense>;
+  useEffect(() => {
+    if (!token) {
+      apiClient.getSetupStatus()
+        .then((data) => setSetupNeeded(data.needsSetup))
+        .catch(() => setSetupNeeded(false)); // on error, assume setup complete
+    }
+  }, [token]);
+
+  if (!token) {
+    if (setupNeeded === null) return <ViewFallback />;
+    if (setupNeeded) {
+      return (
+        <Suspense fallback={<ViewFallback />}>
+          <SetupView onComplete={() => setSetupNeeded(false)} />
+        </Suspense>
+      );
+    }
+    return <Suspense fallback={<ViewFallback />}><LoginView /></Suspense>;
+  }
 
   const handleExportCsv = async (type: string) => {
     if (isDemo) {

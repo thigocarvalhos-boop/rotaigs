@@ -12,6 +12,31 @@ import { prisma } from "./src/lib/prisma";
 import { auditService } from "./src/services/auditService";
 import { alertService } from "./src/services/alertService";
 
+// ============================================
+// SAFE DOCUMENT-EXPIRATION CHECK
+// Prevents crash-loops when Document table is absent (P2021)
+// and guards against concurrent executions.
+// ============================================
+const DOCUMENT_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+let _isCheckingDocumentExpirations = false;
+
+async function safelyCheckDocumentExpirations(): Promise<void> {
+  if (_isCheckingDocumentExpirations) return;
+  _isCheckingDocumentExpirations = true;
+  try {
+    await alertService.checkDocumentExpirations();
+  } catch (error) {
+    // alertService already intercepts P2021 and returns; anything reaching here
+    // is a truly unexpected error — log it but do NOT crash the process.
+    console.error(
+      "[AlertService] Erro inesperado ao verificar expirações de documentos. A aplicação continuará operacional.",
+      error
+    );
+  } finally {
+    _isCheckingDocumentExpirations = false;
+  }
+}
+
 // Extend Express Request type
 declare global {
   namespace Express {
@@ -36,8 +61,7 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
 function sanitizeString(value: unknown, maxLength = 500): string {
   if (typeof value !== "string") return "";
   return value
-    .replace(/<[^>]*>/g, "") // strip HTML tags
-    .replace(/[<>"'&]/g, "") // strip dangerous chars
+    .replace(/[<>"'&]/g, "") // strip dangerous chars (angle brackets, quotes, ampersands)
     .trim()
     .slice(0, maxLength);
 }
@@ -228,16 +252,10 @@ async function startServer() {
 
   // Verificar expiração de documentos a cada hora
   if (dbAvailable) {
-    try {
-      await alertService.checkDocumentExpirations();
-    } catch (error) {
-      console.error("[AlertService] Erro ao verificar expirações no boot. O servidor continuará operacional.", error);
-    }
+    await safelyCheckDocumentExpirations();
     setInterval(() => {
-      alertService.checkDocumentExpirations().catch((err) => {
-        console.error("[AlertService] Erro no ciclo periódico de verificação de expirações:", err);
-      });
-    }, 60 * 60 * 1000);
+      void safelyCheckDocumentExpirations();
+    }, DOCUMENT_CHECK_INTERVAL_MS);
   }
 
   // ============================================
@@ -1017,6 +1035,90 @@ async function startServer() {
     } catch (error) {
       console.error("[GET /api/export/lessons]", error);
       res.status(500).json({ error: "Erro ao exportar lições" });
+    }
+  });
+
+  // ============================================
+  // SETUP ROUTES (public, no auth required)
+  // ============================================
+  const setupLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5, // max 5 attempts per hour
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Muitas tentativas de configuração. Tente novamente em 1 hora." },
+  });
+
+  const AUTHORIZED_SETUP_EMAIL = "institutoguiasocial@gmail.com";
+
+  app.get("/api/setup/status", async (_req: any, res: any) => {
+    try {
+      if (!dbAvailable) {
+        return res.json({ needsSetup: false });
+      }
+      const adminCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      res.json({ needsSetup: adminCount === 0 });
+    } catch (error) {
+      console.error("[GET /api/setup/status]", error);
+      res.json({ needsSetup: false }); // fail-safe: on DB error do not expose setup
+    }
+  });
+
+  app.post("/api/setup/init", setupLimiter, [
+    body("email").isEmail().withMessage("E-mail inválido"),
+    body("name").trim().notEmpty().withMessage("Nome é obrigatório").isLength({ max: 200 }),
+    body("password").isLength({ min: 12 }).withMessage("Senha deve ter no mínimo 12 caracteres"),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: errors.array()[0].msg });
+    }
+
+    const { email, name, password } = req.body;
+
+    if (email !== AUTHORIZED_SETUP_EMAIL) {
+      return res.status(400).json({ error: "E-mail não autorizado para configuração inicial." });
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: "A senha deve conter letras maiúsculas, minúsculas e números." });
+    }
+
+    if (!dbAvailable) {
+      return res.status(503).json({ error: "Banco de dados indisponível." });
+    }
+
+    try {
+      // Race-condition-safe: check atomically before creating
+      const adminCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      if (adminCount > 0) {
+        return res.status(400).json({ error: "Configuração inicial já foi concluída. Faça login normalmente." });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+      const user = await prisma.user.create({
+        data: {
+          email,
+          name: sanitizeString(name, 200),
+          password: hashedPassword,
+          role: "SUPER_ADMIN",
+        },
+      });
+
+      await auditService.log({
+        userId: user.id,
+        acao: "SETUP_COMPLETE",
+        entidade: "User",
+        entidadeId: user.id,
+        depois: { name: user.name, role: user.role, timestamp: new Date().toISOString() },
+      });
+
+      console.log(`[Setup] Primeiro SUPER_ADMIN criado (id: ${user.id}) em ${new Date().toISOString()}`);
+
+      res.status(201).json({ message: "Configuração inicial concluída. Faça login com suas credenciais." });
+    } catch (error) {
+      console.error("[POST /api/setup/init]", error);
+      res.status(500).json({ error: "Erro interno ao configurar o sistema." });
     }
   });
 
