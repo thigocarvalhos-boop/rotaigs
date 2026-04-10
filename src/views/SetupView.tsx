@@ -13,6 +13,7 @@ interface SetupViewProps {
 }
 
 const AUTHORIZED_EMAIL = "institutoguiasocial@gmail.com";
+const REDIRECT_DELAY_MS = 2000;
 
 export default function SetupView({ onComplete }: SetupViewProps) {
   const [name, setName] = useState("");
@@ -33,9 +34,9 @@ export default function SetupView({ onComplete }: SetupViewProps) {
 
     setLoading(true);
     try {
-      await apiClient.initSetup({ email: AUTHORIZED_EMAIL, name, password, passwordConfirm });
+      await apiClient.initSetup({ email: AUTHORIZED_EMAIL, name, password });
       setSuccess(true);
-      setTimeout(() => onComplete(), 2000);
+      setTimeout(() => onComplete(), REDIRECT_DELAY_MS);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro na configuração inicial");
     } finally {

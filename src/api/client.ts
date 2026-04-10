@@ -275,7 +275,7 @@ export const apiClient = {
     return data;
   },
 
-  async initSetup(payload: { email: string; name: string; password: string; passwordConfirm: string }) {
+  async initSetup(payload: { email: string; name: string; password: string }) {
     const res = await fetch(`${API_BASE}/setup/init`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

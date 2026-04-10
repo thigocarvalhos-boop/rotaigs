@@ -1049,21 +1049,16 @@ async function startServer() {
     body("email").isEmail().withMessage("E-mail inválido"),
     body("name").trim().notEmpty().withMessage("Nome é obrigatório").isLength({ max: 200 }),
     body("password").isLength({ min: 12 }).withMessage("Senha deve ter no mínimo 12 caracteres"),
-    body("passwordConfirm").notEmpty().withMessage("Confirmação de senha é obrigatória"),
   ], async (req: any, res: any) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    const { email, name, password, passwordConfirm } = req.body;
+    const { email, name, password } = req.body;
 
     if (email !== AUTHORIZED_SETUP_EMAIL) {
       return res.status(400).json({ error: "E-mail não autorizado para configuração inicial." });
-    }
-
-    if (password !== passwordConfirm) {
-      return res.status(400).json({ error: "As senhas não coincidem." });
     }
 
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
@@ -1096,10 +1091,10 @@ async function startServer() {
         acao: "SETUP_COMPLETE",
         entidade: "User",
         entidadeId: user.id,
-        depois: { email: user.email, name: user.name, role: user.role, timestamp: new Date().toISOString() },
+        depois: { name: user.name, role: user.role, timestamp: new Date().toISOString() },
       });
 
-      console.log(`[Setup] Primeiro SUPER_ADMIN criado: ${user.email} em ${new Date().toISOString()}`);
+      console.log(`[Setup] Primeiro SUPER_ADMIN criado (id: ${user.id}) em ${new Date().toISOString()}`);
 
       res.status(201).json({ message: "Configuração inicial concluída. Faça login com suas credenciais." });
     } catch (error) {
