@@ -1,6 +1,5 @@
--- Schema creation migration: drop any corrupted state and create entire schema from scratch
--- This is the sole migration after removal of corrupted 20240101000000_init
--- Safe to run on fresh or corrupted databases (uses DROP IF EXISTS)
+-- Emergency migration: drop corrupted state and recreate entire schema from scratch
+-- This migration is idempotent and handles corrupted _prisma_migrations state
 
 -- Drop all application tables (reverse FK dependency order)
 DROP TABLE IF EXISTS "LessonLearned" CASCADE;
@@ -22,6 +21,33 @@ DROP TABLE IF EXISTS users CASCADE;
 
 -- Drop Role enum if exists
 DROP TYPE IF EXISTS "Role" CASCADE;
+
+-- Drop and recreate _prisma_migrations to clear corrupted migration history
+DROP TABLE IF EXISTS "_prisma_migrations" CASCADE;
+CREATE TABLE "_prisma_migrations" (
+    "id"                    VARCHAR(36) NOT NULL,
+    "checksum"              VARCHAR(64) NOT NULL,
+    "finished_at"           TIMESTAMPTZ,
+    "migration_name"        VARCHAR(255) NOT NULL,
+    "logs"                  TEXT,
+    "rolled_back_at"        TIMESTAMPTZ,
+    "started_at"            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "applied_steps_count"   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("id")
+);
+
+-- Mark previous correct migration as already applied so Prisma does not re-run it
+INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
+VALUES (
+    gen_random_uuid()::VARCHAR,
+    'emergency_skip_checksum_20240101000000',
+    NOW(),
+    '20240101000000_init',
+    NULL,
+    NULL,
+    NOW(),
+    1
+);
 
 -- CreateEnum
 CREATE TYPE "Role" AS ENUM ('SUPER_ADMIN', 'DIRETORIA', 'COORDENACAO', 'ELABORADOR', 'DOCUMENTAL', 'FINANCEIRO', 'MONITORAMENTO', 'LEITURA');
