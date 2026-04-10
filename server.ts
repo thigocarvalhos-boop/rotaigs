@@ -230,10 +230,14 @@ async function startServer() {
   if (dbAvailable) {
     try {
       await alertService.checkDocumentExpirations();
-      setInterval(() => alertService.checkDocumentExpirations(), 60 * 60 * 1000);
     } catch (error) {
-      console.error("AlertService: Erro ao verificar expirações.", error);
+      console.error("[AlertService] Erro ao verificar expirações no boot. O servidor continuará operacional.", error);
     }
+    setInterval(() => {
+      alertService.checkDocumentExpirations().catch((err) => {
+        console.error("[AlertService] Erro no ciclo periódico de verificação de expirações:", err);
+      });
+    }, 60 * 60 * 1000);
   }
 
   // ============================================
