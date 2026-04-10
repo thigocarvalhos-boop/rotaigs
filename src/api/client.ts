@@ -266,4 +266,23 @@ export const apiClient = {
     const res = await fetch(`${API_BASE}/health`);
     return safeJson(res);
   },
+
+  // --- Setup ---
+  async getSetupStatus(): Promise<{ needsSetup: boolean }> {
+    const res = await fetch(`${API_BASE}/setup/status`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro ao verificar status do sistema");
+    return data;
+  },
+
+  async initSetup(payload: { email: string; name: string; password: string; passwordConfirm: string }) {
+    const res = await fetch(`${API_BASE}/setup/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || "Erro na configuração inicial");
+    return data;
+  },
 };

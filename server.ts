@@ -1021,6 +1021,95 @@ async function startServer() {
   });
 
   // ============================================
+  // SETUP ROUTES (public, no auth required)
+  // ============================================
+  const setupLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5, // max 5 attempts per hour
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Muitas tentativas de configuração. Tente novamente em 1 hora." },
+  });
+
+  const AUTHORIZED_SETUP_EMAIL = "institutoguiasocial@gmail.com";
+
+  app.get("/api/setup/status", async (_req: any, res: any) => {
+    try {
+      if (!dbAvailable) {
+        return res.json({ needsSetup: false });
+      }
+      const adminCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      res.json({ needsSetup: adminCount === 0 });
+    } catch (error) {
+      console.error("[GET /api/setup/status]", error);
+      res.json({ needsSetup: false }); // fail-safe: on DB error do not expose setup
+    }
+  });
+
+  app.post("/api/setup/init", setupLimiter, [
+    body("email").isEmail().withMessage("E-mail inválido"),
+    body("name").trim().notEmpty().withMessage("Nome é obrigatório").isLength({ max: 200 }),
+    body("password").isLength({ min: 12 }).withMessage("Senha deve ter no mínimo 12 caracteres"),
+    body("passwordConfirm").notEmpty().withMessage("Confirmação de senha é obrigatória"),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: errors.array()[0].msg });
+    }
+
+    const { email, name, password, passwordConfirm } = req.body;
+
+    if (email !== AUTHORIZED_SETUP_EMAIL) {
+      return res.status(400).json({ error: "E-mail não autorizado para configuração inicial." });
+    }
+
+    if (password !== passwordConfirm) {
+      return res.status(400).json({ error: "As senhas não coincidem." });
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: "A senha deve conter letras maiúsculas, minúsculas e números." });
+    }
+
+    if (!dbAvailable) {
+      return res.status(503).json({ error: "Banco de dados indisponível." });
+    }
+
+    try {
+      // Race-condition-safe: check atomically before creating
+      const adminCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      if (adminCount > 0) {
+        return res.status(400).json({ error: "Configuração inicial já foi concluída. Faça login normalmente." });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+      const user = await prisma.user.create({
+        data: {
+          email,
+          name: sanitizeString(name, 200),
+          password: hashedPassword,
+          role: "SUPER_ADMIN",
+        },
+      });
+
+      await auditService.log({
+        userId: user.id,
+        acao: "SETUP_COMPLETE",
+        entidade: "User",
+        entidadeId: user.id,
+        depois: { email: user.email, name: user.name, role: user.role, timestamp: new Date().toISOString() },
+      });
+
+      console.log(`[Setup] Primeiro SUPER_ADMIN criado: ${user.email} em ${new Date().toISOString()}`);
+
+      res.status(201).json({ message: "Configuração inicial concluída. Faça login com suas credenciais." });
+    } catch (error) {
+      console.error("[POST /api/setup/init]", error);
+      res.status(500).json({ error: "Erro interno ao configurar o sistema." });
+    }
+  });
+
+  // ============================================
   // VITE / STATIC SERVING
   // ============================================
   if (process.env.NODE_ENV !== "production") {
