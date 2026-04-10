@@ -36,8 +36,7 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
 function sanitizeString(value: unknown, maxLength = 500): string {
   if (typeof value !== "string") return "";
   return value
-    .replace(/<[^>]*>/g, "") // strip HTML tags
-    .replace(/[<>"'&]/g, "") // strip dangerous chars
+    .replace(/[<>"'&]/g, "") // strip dangerous chars (angle brackets, quotes, ampersands)
     .trim()
     .slice(0, maxLength);
 }
