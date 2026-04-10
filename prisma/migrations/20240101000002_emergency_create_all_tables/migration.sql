@@ -1,4 +1,5 @@
--- Initial migration: drop any corrupted state and create entire schema from scratch
+-- Schema creation migration: drop any corrupted state and create entire schema from scratch
+-- This is the sole migration after removal of corrupted 20240101000000_init
 -- Safe to run on fresh or corrupted databases (uses DROP IF EXISTS)
 
 -- Drop all application tables (reverse FK dependency order)
