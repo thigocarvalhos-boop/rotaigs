@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "lint:api": "tsc --noEmit -p tsconfig.api.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrate:prod": "npx prisma@6.4.1 migrate deploy"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

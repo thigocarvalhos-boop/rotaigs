@@ -11,6 +11,7 @@ import rateLimit from "express-rate-limit";
 import { prisma } from "./src/lib/prisma";
 import { auditService } from "./src/services/auditService";
 import { alertService } from "./src/services/alertService";
+import { runProductionMigrations } from "./scripts/migrate-prod";
 
 // Extend Express Request type
 declare global {
@@ -1049,4 +1050,9 @@ process.on("uncaughtException", (error) => {
   console.error("[uncaughtException]", error);
 });
 
-startServer();
+runProductionMigrations()
+  .then(() => startServer())
+  .catch((err) => {
+    console.error("[startup] Unexpected error during migration or server start:", err);
+    process.exit(1);
+  });
