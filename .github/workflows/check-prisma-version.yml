@@ -1,0 +1,31 @@
+name: Check Prisma version pin
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-prisma-version:
+    name: No unversioned prisma commands
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if unversioned prisma commands are found
+        run: |
+          # Exclude package-lock.json, node_modules, and this workflow file itself.
+          # Any occurrence of unversioned "npx prisma generate/migrate" is a regression.
+          if grep -rn --include="*.json" --include="*.yml" --include="*.yaml" \
+               --include="*.md" --include="*.sh" --include="*.ts" --include="*.js" \
+               --exclude="package-lock.json" \
+               --exclude="check-prisma-version.yml" \
+               --exclude-dir=node_modules \
+               -E "npx prisma (generate|migrate)" .; then
+            echo ""
+            echo "ERROR: Unversioned 'npx prisma generate' or 'npx prisma migrate' found."
+            echo "Use 'npx prisma@6.4.1 generate' and 'npx prisma@6.4.1 migrate ...' instead."
+            exit 1
+          fi
+          echo "OK: No unversioned prisma commands found."
