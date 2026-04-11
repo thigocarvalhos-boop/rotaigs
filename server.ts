@@ -5,9 +5,13 @@ import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { body, validationResult } from "express-validator";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { prisma } from "./src/lib/prisma";
 import { auditService } from "./src/services/auditService";
 import { alertService } from "./src/services/alertService";
+import { runProductionMigrations } from "./scripts/migrate-prod";
 
 // Extend Express Request type
 declare global {
@@ -29,6 +33,26 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
   process.exit(1);
 }
 
+// --- Input sanitization helper ---
+function sanitizeString(value: unknown, maxLength = 500): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/<[^>]*>/g, "") // strip HTML tags
+    .replace(/[<>"'&]/g, "") // strip dangerous chars
+    .trim()
+    .slice(0, maxLength);
+}
+
+function sanitizeNumber(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const n = Number(value);
+  if (isNaN(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function sanitizeInt(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  return Math.round(sanitizeNumber(value, min, max));
+}
+
 // --- CSV Helper ---
 function toCsv(headers: string[], rows: string[][]): string {
   const escape = (v: string) => {
@@ -48,7 +72,7 @@ function toCsv(headers: string[], rows: string[][]): string {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   const dbUrl = process.env.DATABASE_URL;
   const dbAvailable = dbUrl && (dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://"));
@@ -56,6 +80,47 @@ async function startServer() {
   if (!dbAvailable) {
     console.warn("⚠️  DATABASE_URL não configurada. A API estará indisponível — o frontend usará dados de demonstração.");
   }
+
+  // ============================================
+  // SECURITY MIDDLEWARE
+  // ============================================
+  app.use(helmet({
+    contentSecurityPolicy: false, // Vite dev server needs inline scripts
+    crossOriginEmbedderPolicy: false,
+  }));
+
+  app.use(cors({
+    origin: process.env.CORS_ORIGIN || true, // Allow same-origin in dev; set explicit origin in production
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }));
+
+  app.use(express.json({ limit: "1mb" }));
+
+  // Rate limiting for login
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // 10 attempts per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Muitas tentativas de login. Tente novamente em 15 minutos." },
+  });
+
+  // General API rate limiter
+  const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 200, // 200 requests per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use("/api/", apiLimiter);
+
+  // Logging Middleware
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
 
   // Seed Initial Data
   if (dbAvailable) {
@@ -70,7 +135,12 @@ async function startServer() {
         let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
         
         if (!admin) {
-          const hashedPassword = await bcrypt.hash("admin123", 12);
+          const defaultPw = process.env.ADMIN_DEFAULT_PASSWORD;
+          if (!defaultPw) {
+            console.error("SEED: ADMIN_DEFAULT_PASSWORD não definida. Não é possível criar admin sem senha segura.");
+            return;
+          }
+          const hashedPassword = await bcrypt.hash(defaultPw, 12);
           admin = await prisma.user.create({
             data: {
               email: adminEmail,
@@ -139,7 +209,6 @@ async function startServer() {
           console.log("Seed: Initial project and alerts created.");
         }
 
-        // Seed initial lessons if empty
         const lessonCount = await prisma.lessonLearned.count();
         if (lessonCount === 0) {
           await prisma.lessonLearned.createMany({
@@ -162,26 +231,24 @@ async function startServer() {
   if (dbAvailable) {
     try {
       await alertService.checkDocumentExpirations();
-      setInterval(() => alertService.checkDocumentExpirations(), 60 * 60 * 1000);
     } catch (error) {
-      console.error("AlertService: Erro ao verificar expirações.", error);
+      console.error("[AlertService] Erro ao verificar expirações no boot. O servidor continuará operacional.", error);
     }
+    setInterval(() => {
+      alertService.checkDocumentExpirations().catch((err) => {
+        console.error("[AlertService] Erro no ciclo periódico de verificação de expirações:", err);
+      });
+    }, 60 * 60 * 1000);
   }
 
-  app.use(express.json());
-
-  // Logging Middleware
-  app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-  });
-
-  // Auth Middleware
+  // ============================================
+  // AUTH MIDDLEWARE
+  // ============================================
   const authenticate = (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) return res.status(401).json({ error: "Acesso negado" });
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
       req.user = decoded;
       next();
     } catch (err) {
@@ -194,6 +261,7 @@ async function startServer() {
     "expenses:create":   ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "FINANCEIRO"],
     "documents:create":  ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "DOCUMENTAL"],
     "documents:update":  ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "DOCUMENTAL"],
+    "documents:delete":  ["SUPER_ADMIN", "DIRETORIA"],
     "audit-logs:read":   ["SUPER_ADMIN", "DIRETORIA", "MONITORAMENTO"],
     "alerts:read":       ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO", "MONITORAMENTO", "FINANCEIRO", "ELABORADOR"],
     "projects:create":   ["SUPER_ADMIN", "DIRETORIA", "COORDENACAO"],
@@ -214,15 +282,19 @@ async function startServer() {
     next();
   };
 
+  // ============================================
   // API Routes
+  // ============================================
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Auth Endpoint
-  app.post("/api/auth/login", [
-    body("email").isEmail(),
-    body("password").isLength({ min: 6 })
+  // ============================================
+  // AUTH ENDPOINT (with rate limiting)
+  // ============================================
+  app.post("/api/auth/login", loginLimiter, [
+    body("email").isEmail().withMessage("E-mail inválido"),
+    body("password").isLength({ min: 8 }).withMessage("Senha deve ter no mínimo 8 caracteres")
   ], async (req: any, res: any) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -239,12 +311,12 @@ async function startServer() {
       const accessToken = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: "15m", algorithm: "HS256" }
       );
       const refreshToken = jwt.sign(
         { id: user.id },
         JWT_REFRESH_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "7d", algorithm: "HS256" }
       );
       
       await auditService.log({
@@ -260,6 +332,7 @@ async function startServer() {
         user: { id: user.id, name: user.name, email: user.email, role: user.role }
       });
     } catch (error) {
+      console.error("[POST /api/auth/login]", error);
       res.status(500).json({ error: "Erro interno no servidor" });
     }
   });
@@ -268,13 +341,13 @@ async function startServer() {
     const { refreshToken } = req.body;
     if (!refreshToken) return res.status(401).json({ error: "Refresh token ausente" });
     try {
-      const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
+      const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET, { algorithms: ["HS256"] }) as any;
       const user = await prisma.user.findUnique({ where: { id: decoded.id } });
       if (!user) return res.status(401).json({ error: "Usuário não encontrado" });
       const accessToken = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: "15m", algorithm: "HS256" }
       );
       res.json({ accessToken });
     } catch {
@@ -283,49 +356,69 @@ async function startServer() {
   });
 
   // ============================================
-  // PROJECT ROUTES — full CRUD
+  // PROJECT ROUTES — full CRUD with validation
   // ============================================
-  app.get("/api/projects", authenticate, async (req, res) => {
+  app.get("/api/projects", authenticate, async (req: any, res: any) => {
     try {
-      const projects = await prisma.project.findMany({
-        include: {
-          responsavel: true,
-          alerts: true,
-          metas: true,
-          etapas: true,
-          docs: true,
-          expenses: { include: { cotacoes: true } },
-          compliance: true
-        }
-      });
-      res.json(projects);
+      const page = sanitizeInt(req.query.page, 1);
+      const limit = sanitizeInt(req.query.limit, 1, 100) || 50;
+      const skip = (page - 1) * limit;
+
+      const [projects, total] = await Promise.all([
+        prisma.project.findMany({
+          include: {
+            responsavel: true,
+            alerts: true,
+            metas: true,
+            etapas: true,
+            docs: true,
+            expenses: { include: { cotacoes: true } },
+            compliance: true
+          },
+          skip,
+          take: limit,
+          orderBy: { updatedAt: "desc" },
+        }),
+        prisma.project.count(),
+      ]);
+      res.json({ data: projects, total, page, limit });
     } catch (error) {
       console.error("[GET /api/projects]", error);
       res.status(500).json({ error: "Erro ao buscar projetos" });
     }
   });
 
-  app.post("/api/projects", authenticate, can("projects:create"), async (req: any, res: any) => {
+  app.post("/api/projects", authenticate, can("projects:create"), [
+    body("nome").trim().notEmpty().withMessage("Nome é obrigatório").isLength({ max: 200 }),
+    body("prazo").notEmpty().withMessage("Prazo é obrigatório").isISO8601(),
+    body("valor").optional().isFloat({ min: 0 }).withMessage("Valor deve ser positivo"),
+    body("probabilidade").optional().isInt({ min: 0, max: 100 }),
+    body("aderencia").optional().isInt({ min: 0, max: 10 }),
+    body("ptScore").optional().isInt({ min: 0, max: 10 }),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const data = req.body;
     try {
       const project = await prisma.project.create({
         data: {
-          nome: data.nome,
-          edital: data.edital || "",
-          financiador: data.financiador || "",
-          area: data.area || "",
-          valor: data.valor || 0,
-          status: data.status || "Triagem",
+          nome: sanitizeString(data.nome, 200),
+          edital: sanitizeString(data.edital, 200),
+          financiador: sanitizeString(data.financiador, 200),
+          area: sanitizeString(data.area, 100),
+          valor: sanitizeNumber(data.valor, 0),
+          status: sanitizeString(data.status || "Triagem", 50),
           prazo: new Date(data.prazo),
           responsavelId: req.user.id,
-          probabilidade: data.probabilidade || 0,
-          risco: data.risco || "Baixo",
-          aderencia: data.aderencia || 0,
-          territorio: data.territorio || "",
-          publico: data.publico || "",
-          competitividade: data.competitividade || "",
-          proximoPasso: data.proximoPasso || "",
-          ptScore: data.ptScore || 0
+          probabilidade: sanitizeInt(data.probabilidade, 0, 100),
+          risco: sanitizeString(data.risco || "Baixo", 20),
+          aderencia: sanitizeInt(data.aderencia, 0, 10),
+          territorio: sanitizeString(data.territorio, 200),
+          publico: sanitizeString(data.publico, 200),
+          competitividade: sanitizeString(data.competitividade, 50),
+          proximoPasso: sanitizeString(data.proximoPasso, 500),
+          ptScore: sanitizeInt(data.ptScore, 0, 10)
         }
       });
 
@@ -355,21 +448,21 @@ async function startServer() {
       const project = await prisma.project.update({
         where: { id },
         data: {
-          ...(data.nome !== undefined && { nome: data.nome }),
-          ...(data.edital !== undefined && { edital: data.edital }),
-          ...(data.financiador !== undefined && { financiador: data.financiador }),
-          ...(data.area !== undefined && { area: data.area }),
-          ...(data.valor !== undefined && { valor: data.valor }),
-          ...(data.status !== undefined && { status: data.status }),
+          ...(data.nome !== undefined && { nome: sanitizeString(data.nome, 200) }),
+          ...(data.edital !== undefined && { edital: sanitizeString(data.edital, 200) }),
+          ...(data.financiador !== undefined && { financiador: sanitizeString(data.financiador, 200) }),
+          ...(data.area !== undefined && { area: sanitizeString(data.area, 100) }),
+          ...(data.valor !== undefined && { valor: sanitizeNumber(data.valor, 0) }),
+          ...(data.status !== undefined && { status: sanitizeString(data.status, 50) }),
           ...(data.prazo !== undefined && { prazo: new Date(data.prazo) }),
-          ...(data.probabilidade !== undefined && { probabilidade: data.probabilidade }),
-          ...(data.risco !== undefined && { risco: data.risco }),
-          ...(data.aderencia !== undefined && { aderencia: data.aderencia }),
-          ...(data.territorio !== undefined && { territorio: data.territorio }),
-          ...(data.publico !== undefined && { publico: data.publico }),
-          ...(data.competitividade !== undefined && { competitividade: data.competitividade }),
-          ...(data.proximoPasso !== undefined && { proximoPasso: data.proximoPasso }),
-          ...(data.ptScore !== undefined && { ptScore: data.ptScore }),
+          ...(data.probabilidade !== undefined && { probabilidade: sanitizeInt(data.probabilidade, 0, 100) }),
+          ...(data.risco !== undefined && { risco: sanitizeString(data.risco, 20) }),
+          ...(data.aderencia !== undefined && { aderencia: sanitizeInt(data.aderencia, 0, 10) }),
+          ...(data.territorio !== undefined && { territorio: sanitizeString(data.territorio, 200) }),
+          ...(data.publico !== undefined && { publico: sanitizeString(data.publico, 200) }),
+          ...(data.competitividade !== undefined && { competitividade: sanitizeString(data.competitividade, 50) }),
+          ...(data.proximoPasso !== undefined && { proximoPasso: sanitizeString(data.proximoPasso, 500) }),
+          ...(data.ptScore !== undefined && { ptScore: sanitizeInt(data.ptScore, 0, 10) }),
         },
         include: {
           responsavel: true,
@@ -399,22 +492,33 @@ async function startServer() {
     }
   });
 
+  // DELETE with $transaction for data integrity
   app.delete("/api/projects/:id", authenticate, can("projects:delete"), async (req: any, res: any) => {
     const { id } = req.params;
     try {
       const before = await prisma.project.findUnique({ where: { id } });
       if (!before) return res.status(404).json({ error: "Projeto não encontrado" });
 
-      // Delete related records first
-      await prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } });
-      await prisma.expense.deleteMany({ where: { projectId: id } });
-      await prisma.meta.deleteMany({ where: { projectId: id } });
-      await prisma.etapa.deleteMany({ where: { projectId: id } });
-      await prisma.document.deleteMany({ where: { projectId: id } });
-      await prisma.complianceCheck.deleteMany({ where: { projectId: id } });
-      await prisma.alert.deleteMany({ where: { projectId: id } });
-      await prisma.auditLog.deleteMany({ where: { projectId: id } });
-      await prisma.project.delete({ where: { id } });
+      await prisma.$transaction([
+        prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } }),
+        prisma.expense.deleteMany({ where: { projectId: id } }),
+        prisma.meta.deleteMany({ where: { projectId: id } }),
+        prisma.etapa.deleteMany({ where: { projectId: id } }),
+        prisma.document.deleteMany({ where: { projectId: id } }),
+        prisma.complianceCheck.deleteMany({ where: { projectId: id } }),
+        prisma.alert.deleteMany({ where: { projectId: id } }),
+        prisma.auditLog.deleteMany({ where: { projectId: id } }),
+        prisma.project.delete({ where: { id } }),
+      ]);
+
+      // Log deletion after transaction completes
+      await auditService.log({
+        userId: req.user.id,
+        acao: "DELETE",
+        entidade: "Project",
+        entidadeId: id,
+        antes: before
+      });
 
       res.json({ success: true });
     } catch (error) {
@@ -424,16 +528,23 @@ async function startServer() {
   });
 
   // ============================================
-  // EXPENSE ROUTES with Anti-glosa
+  // EXPENSE ROUTES with Anti-glosa & validation
   // ============================================
-  app.post("/api/expenses", authenticate, can("expenses:create"), async (req: any, res: any) => {
+  app.post("/api/expenses", authenticate, can("expenses:create"), [
+    body("projectId").notEmpty().withMessage("ID do projeto é obrigatório"),
+    body("descricao").trim().notEmpty().withMessage("Descrição é obrigatória").isLength({ max: 500 }),
+    body("valor").isFloat({ min: 0.01 }).withMessage("Valor deve ser positivo"),
+    body("vincMetaId").notEmpty().withMessage("Vínculo com Meta é obrigatório"),
+    body("vincEtapaId").notEmpty().withMessage("Vínculo com Etapa é obrigatório"),
+    body("data").notEmpty().isISO8601().withMessage("Data é obrigatória"),
+    body("categoria").trim().notEmpty().withMessage("Categoria é obrigatória"),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const { projectId, descricao, valor, vincMetaId, vincEtapaId, cotacoes, data, categoria } = req.body;
     
     try {
-      if (!vincMetaId || !vincEtapaId) {
-        return res.status(400).json({ error: "Vínculo com Meta e Etapa é obrigatório para evitar glosa." });
-      }
-
       if (valor > 1000 && (!cotacoes || cotacoes.length < 3)) {
         return res.status(400).json({ 
           error: "Despesas acima de R$ 1.000,00 exigem no mínimo 3 cotações para conformidade institucional.",
@@ -471,20 +582,20 @@ async function startServer() {
       const expense = await prisma.expense.create({
         data: {
           projectId,
-          descricao,
-          valor,
+          descricao: sanitizeString(descricao, 500),
+          valor: sanitizeNumber(valor, 0),
           data: expenseDate,
-          categoria,
+          categoria: sanitizeString(categoria, 100),
           status: "VALIDADO",
           vincMetaId,
           vincEtapaId,
           cotacoes: {
             create: cotacoes?.map((c: any) => ({
-              fornecedor: c.fornecedor,
-              valor: c.valor,
+              fornecedor: sanitizeString(c.fornecedor, 200),
+              valor: sanitizeNumber(c.valor, 0),
               data: new Date(c.data),
-              vencedora: c.vencedora,
-              docUrl: c.docUrl
+              vencedora: Boolean(c.vencedora),
+              docUrl: c.docUrl ? sanitizeString(c.docUrl, 500) : null
             }))
           }
         }
@@ -507,31 +618,46 @@ async function startServer() {
   });
 
   // ============================================
-  // DOCUMENT ROUTES — full CRUD
+  // DOCUMENT ROUTES — full CRUD with validation
   // ============================================
-  app.get("/api/documents", authenticate, async (req, res) => {
+  app.get("/api/documents", authenticate, async (req: any, res: any) => {
     try {
-      const docs = await prisma.document.findMany({
-        include: { project: true },
-        orderBy: { nome: "asc" }
-      });
-      res.json(docs);
+      const page = sanitizeInt(req.query.page, 1);
+      const limit = sanitizeInt(req.query.limit, 1, 100) || 50;
+      const skip = (page - 1) * limit;
+
+      const [docs, total] = await Promise.all([
+        prisma.document.findMany({
+          include: { project: true },
+          orderBy: { nome: "asc" },
+          skip,
+          take: limit,
+        }),
+        prisma.document.count(),
+      ]);
+      res.json({ data: docs, total, page, limit });
     } catch (error) {
       console.error("[GET /api/documents]", error);
       res.status(500).json({ error: "Erro ao buscar documentos" });
     }
   });
 
-  app.post("/api/documents", authenticate, can("documents:create"), async (req: any, res: any) => {
+  app.post("/api/documents", authenticate, can("documents:create"), [
+    body("projectId").notEmpty().withMessage("ID do projeto é obrigatório"),
+    body("nome").trim().notEmpty().withMessage("Nome é obrigatório").isLength({ max: 200 }),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const { projectId, nome, validade, url, fileType } = req.body;
     try {
       const doc = await prisma.document.create({
         data: {
           projectId,
-          nome,
+          nome: sanitizeString(nome, 200),
           validade: validade ? new Date(validade) : null,
-          url: url || null,
-          fileType: fileType || null,
+          url: url ? sanitizeString(url, 500) : null,
+          fileType: fileType ? sanitizeString(fileType, 10) : null,
           status: "Pendente"
         }
       });
@@ -562,11 +688,11 @@ async function startServer() {
       const doc = await prisma.document.update({
         where: { id },
         data: {
-          ...(data.nome !== undefined && { nome: data.nome }),
-          ...(data.status !== undefined && { status: data.status }),
+          ...(data.nome !== undefined && { nome: sanitizeString(data.nome, 200) }),
+          ...(data.status !== undefined && { status: sanitizeString(data.status, 50) }),
           ...(data.validade !== undefined && { validade: data.validade ? new Date(data.validade) : null }),
-          ...(data.url !== undefined && { url: data.url || null }),
-          ...(data.fileType !== undefined && { fileType: data.fileType || null }),
+          ...(data.url !== undefined && { url: data.url ? sanitizeString(data.url, 500) : null }),
+          ...(data.fileType !== undefined && { fileType: data.fileType ? sanitizeString(data.fileType, 10) : null }),
         },
         include: { project: true }
       });
@@ -588,12 +714,24 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/documents/:id", authenticate, can("documents:update"), async (req: any, res: any) => {
+  // Fixed: documents:delete permission instead of documents:update
+  app.delete("/api/documents/:id", authenticate, can("documents:delete"), async (req: any, res: any) => {
     const { id } = req.params;
     try {
       const doc = await prisma.document.findUnique({ where: { id } });
       if (!doc) return res.status(404).json({ error: "Documento não encontrado" });
+
       await prisma.document.delete({ where: { id } });
+
+      await auditService.log({
+        userId: req.user.id,
+        projectId: doc.projectId,
+        acao: "DELETE",
+        entidade: "Document",
+        entidadeId: id,
+        antes: doc
+      });
+
       res.json({ success: true });
     } catch (error) {
       console.error("[DELETE /api/documents/:id]", error);
@@ -613,7 +751,8 @@ async function startServer() {
           ...(isAdmin ? {} : { project: { responsavelId: req.user.id } })
         },
         include: { project: true },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        take: 100,
       });
       res.json(alerts);
     } catch (error) {
@@ -635,8 +774,8 @@ async function startServer() {
   });
 
   app.patch("/api/alerts/:id/resolve", authenticate, async (req: any, res: any) => {
-    const { resolucao } = req.body;
-    if (!resolucao?.trim()) {
+    const resolucao = sanitizeString(req.body?.resolucao, 1000);
+    if (!resolucao) {
       return res.status(400).json({ error: "Campo 'resolucao' é obrigatório para encerrar o alerta" });
     }
     try {
@@ -651,16 +790,24 @@ async function startServer() {
   });
 
   // ============================================
-  // AUDIT LOGS
+  // AUDIT LOGS (paginated)
   // ============================================
-  app.get("/api/audit-logs", authenticate, can("audit-logs:read"), async (req, res) => {
+  app.get("/api/audit-logs", authenticate, can("audit-logs:read"), async (req: any, res: any) => {
     try {
-      const logs = await prisma.auditLog.findMany({
-        include: { user: true, project: true },
-        orderBy: { data: "desc" },
-        take: 50
-      });
-      res.json(logs);
+      const page = sanitizeInt(req.query.page, 1);
+      const limit = sanitizeInt(req.query.limit, 1, 100) || 50;
+      const skip = (page - 1) * limit;
+
+      const [logs, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          include: { user: true, project: true },
+          orderBy: { data: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.auditLog.count(),
+      ]);
+      res.json({ data: logs, total, page, limit });
     } catch (error) {
       console.error("[GET /api/audit-logs]", error);
       res.status(500).json({ error: "Erro ao buscar logs" });
@@ -691,12 +838,13 @@ async function startServer() {
   });
 
   // ============================================
-  // LESSONS LEARNED — full CRUD
+  // LESSONS LEARNED — full CRUD with validation
   // ============================================
-  app.get("/api/lessons", authenticate, async (req, res) => {
+  app.get("/api/lessons", authenticate, async (req: any, res: any) => {
     try {
       const lessons = await prisma.lessonLearned.findMany({
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        take: 200,
       });
       res.json(lessons);
     } catch (error) {
@@ -705,17 +853,21 @@ async function startServer() {
     }
   });
 
-  app.post("/api/lessons", authenticate, async (req: any, res: any) => {
+  app.post("/api/lessons", authenticate, [
+    body("projeto").trim().notEmpty().withMessage("Projeto é obrigatório").isLength({ max: 200 }),
+    body("licao").trim().notEmpty().withMessage("Lição é obrigatória").isLength({ max: 2000 }),
+    body("categoria").optional().isLength({ max: 100 }),
+  ], async (req: any, res: any) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const { projeto, licao, categoria } = req.body;
-    if (!projeto?.trim() || !licao?.trim()) {
-      return res.status(400).json({ error: "Campos 'projeto' e 'licao' são obrigatórios" });
-    }
     try {
       const lesson = await prisma.lessonLearned.create({
         data: {
-          projeto,
-          licao,
-          categoria: categoria || null,
+          projeto: sanitizeString(projeto, 200),
+          licao: sanitizeString(licao, 2000),
+          categoria: categoria ? sanitizeString(categoria, 100) : null,
           autor: req.user.email
         }
       });
@@ -733,9 +885,9 @@ async function startServer() {
       const lesson = await prisma.lessonLearned.update({
         where: { id },
         data: {
-          ...(projeto !== undefined && { projeto }),
-          ...(licao !== undefined && { licao }),
-          ...(categoria !== undefined && { categoria: categoria || null }),
+          ...(projeto !== undefined && { projeto: sanitizeString(projeto, 200) }),
+          ...(licao !== undefined && { licao: sanitizeString(licao, 2000) }),
+          ...(categoria !== undefined && { categoria: categoria ? sanitizeString(categoria, 100) : null }),
         }
       });
       res.json(lesson);
@@ -898,4 +1050,9 @@ process.on("uncaughtException", (error) => {
   console.error("[uncaughtException]", error);
 });
 
-startServer();
+runProductionMigrations()
+  .then(() => startServer())
+  .catch((err) => {
+    console.error("[startup] Unexpected error during migration or server start:", err);
+    process.exit(1);
+  });

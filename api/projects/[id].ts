@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/prisma.js";
-import { authenticate, can } from "../_lib/auth.js";
+import { authenticate, can, sanitizeString, sanitizeNumber, sanitizeInt } from "../_lib/auth.js";
 import { auditService } from "../_lib/audit.js";
 
 export default async function handler(req: any, res: any) {
@@ -19,21 +19,21 @@ export default async function handler(req: any, res: any) {
       const project = await prisma.project.update({
         where: { id },
         data: {
-          ...(data.nome !== undefined && { nome: data.nome }),
-          ...(data.edital !== undefined && { edital: data.edital }),
-          ...(data.financiador !== undefined && { financiador: data.financiador }),
-          ...(data.area !== undefined && { area: data.area }),
-          ...(data.valor !== undefined && { valor: data.valor }),
-          ...(data.status !== undefined && { status: data.status }),
+          ...(data.nome !== undefined && { nome: sanitizeString(data.nome, 200) }),
+          ...(data.edital !== undefined && { edital: sanitizeString(data.edital, 200) }),
+          ...(data.financiador !== undefined && { financiador: sanitizeString(data.financiador, 200) }),
+          ...(data.area !== undefined && { area: sanitizeString(data.area, 100) }),
+          ...(data.valor !== undefined && { valor: sanitizeNumber(data.valor, 0) }),
+          ...(data.status !== undefined && { status: sanitizeString(data.status, 50) }),
           ...(data.prazo !== undefined && { prazo: new Date(data.prazo) }),
-          ...(data.probabilidade !== undefined && { probabilidade: data.probabilidade }),
-          ...(data.risco !== undefined && { risco: data.risco }),
-          ...(data.aderencia !== undefined && { aderencia: data.aderencia }),
-          ...(data.territorio !== undefined && { territorio: data.territorio }),
-          ...(data.publico !== undefined && { publico: data.publico }),
-          ...(data.competitividade !== undefined && { competitividade: data.competitividade }),
-          ...(data.proximoPasso !== undefined && { proximoPasso: data.proximoPasso }),
-          ...(data.ptScore !== undefined && { ptScore: data.ptScore }),
+          ...(data.probabilidade !== undefined && { probabilidade: sanitizeInt(data.probabilidade, 0, 100) }),
+          ...(data.risco !== undefined && { risco: sanitizeString(data.risco, 20) }),
+          ...(data.aderencia !== undefined && { aderencia: sanitizeInt(data.aderencia, 0, 10) }),
+          ...(data.territorio !== undefined && { territorio: sanitizeString(data.territorio, 200) }),
+          ...(data.publico !== undefined && { publico: sanitizeString(data.publico, 200) }),
+          ...(data.competitividade !== undefined && { competitividade: sanitizeString(data.competitividade, 50) }),
+          ...(data.proximoPasso !== undefined && { proximoPasso: sanitizeString(data.proximoPasso, 500) }),
+          ...(data.ptScore !== undefined && { ptScore: sanitizeInt(data.ptScore, 0, 10) }),
         },
         include: {
           responsavel: true,
@@ -70,17 +70,18 @@ export default async function handler(req: any, res: any) {
       const before = await prisma.project.findUnique({ where: { id } });
       if (!before) return res.status(404).json({ error: "Projeto não encontrado" });
 
-      await prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } });
-      await prisma.expense.deleteMany({ where: { projectId: id } });
-      await prisma.meta.deleteMany({ where: { projectId: id } });
-      await prisma.etapa.deleteMany({ where: { projectId: id } });
-      await prisma.document.deleteMany({ where: { projectId: id } });
-      await prisma.complianceCheck.deleteMany({ where: { projectId: id } });
-      await prisma.alert.deleteMany({ where: { projectId: id } });
-      await prisma.auditLog.deleteMany({ where: { projectId: id } });
-      await prisma.project.delete({ where: { id } });
+      await prisma.$transaction([
+        prisma.cotacao.deleteMany({ where: { expense: { projectId: id } } }),
+        prisma.expense.deleteMany({ where: { projectId: id } }),
+        prisma.meta.deleteMany({ where: { projectId: id } }),
+        prisma.etapa.deleteMany({ where: { projectId: id } }),
+        prisma.document.deleteMany({ where: { projectId: id } }),
+        prisma.complianceCheck.deleteMany({ where: { projectId: id } }),
+        prisma.alert.deleteMany({ where: { projectId: id } }),
+        prisma.auditLog.deleteMany({ where: { projectId: id } }),
+        prisma.project.delete({ where: { id } }),
+      ]);
 
-      // Log deletion after all records removed; omit projectId so the entry persists
       await auditService.log({
         userId: user.id,
         acao: "DELETE",

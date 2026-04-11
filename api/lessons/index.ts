@@ -1,5 +1,7 @@
 import { prisma } from "../_lib/prisma.js";
-import { authenticate } from "../_lib/auth.js";
+import { authenticate, sanitizeString } from "../_lib/auth.js";
+
+const MAX_LESSONS_LIMIT = 200;
 
 export default async function handler(req: any, res: any) {
   const user = authenticate(req, res);
@@ -10,6 +12,7 @@ export default async function handler(req: any, res: any) {
     try {
       const lessons = await prisma.lessonLearned.findMany({
         orderBy: { createdAt: "desc" },
+        take: MAX_LESSONS_LIMIT,
       });
       return res.json(lessons);
     } catch (error) {
@@ -21,15 +24,17 @@ export default async function handler(req: any, res: any) {
   // POST /api/lessons
   if (req.method === "POST") {
     const { projeto, licao, categoria } = req.body || {};
-    if (!projeto?.trim() || !licao?.trim()) {
+    const sanitizedProjeto = sanitizeString(projeto, 200);
+    const sanitizedLicao = sanitizeString(licao, 2000);
+    if (!sanitizedProjeto || !sanitizedLicao) {
       return res.status(400).json({ error: "Campos 'projeto' e 'licao' são obrigatórios" });
     }
     try {
       const lesson = await prisma.lessonLearned.create({
         data: {
-          projeto,
-          licao,
-          categoria: categoria || null,
+          projeto: sanitizedProjeto,
+          licao: sanitizedLicao,
+          categoria: categoria ? sanitizeString(categoria, 100) : null,
           autor: user.email,
         },
       });

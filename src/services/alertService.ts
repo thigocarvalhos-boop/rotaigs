@@ -1,6 +1,15 @@
 // src/services/alertService.ts
 import { prisma } from "../lib/prisma";
 
+function isMissingTableError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "P2021"
+  );
+}
+
 export const alertService = {
   async create({
     projectId,
@@ -21,29 +30,41 @@ export const alertService = {
   },
 
   async checkDocumentExpirations() {
-    const horizon = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const docs = await prisma.document.findMany({
-      where: {
-        validade: { lte: horizon },
-        status: { not: "VENCIDO" },
-      },
-    });
-
-    for (const doc of docs) {
-      const isExpired = doc.validade && doc.validade < new Date();
-      await alertService.create({
-        projectId: doc.projectId,
-        titulo: isExpired ? "Documento Vencido" : "Documento a Vencer",
-        mensagem: `O documento "${doc.nome}" ${isExpired ? "venceu" : "vencerá"} em ${doc.validade?.toLocaleDateString("pt-BR")}.`,
-        nivel: isExpired ? "N4" : "N2",
-        tipo: "DOCUMENTO",
+    try {
+      const horizon = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const docs = await prisma.document.findMany({
+        where: {
+          validade: { lte: horizon },
+          status: { not: "VENCIDO" },
+        },
       });
-      if (isExpired) {
-        await prisma.document.update({
-          where: { id: doc.id },
-          data: { status: "VENCIDO" },
+
+      for (const doc of docs) {
+        const isExpired = doc.validade && doc.validade < new Date();
+        await alertService.create({
+          projectId: doc.projectId,
+          titulo: isExpired ? "Documento Vencido" : "Documento a Vencer",
+          mensagem: `O documento "${doc.nome}" ${isExpired ? "venceu" : "vencerá"} em ${doc.validade?.toLocaleDateString("pt-BR")}.`,
+          nivel: isExpired ? "N4" : "N2",
+          tipo: "DOCUMENTO",
         });
+        if (isExpired) {
+          await prisma.document.update({
+            where: { id: doc.id },
+            data: { status: "VENCIDO" },
+          });
+        }
       }
+    } catch (err: unknown) {
+      if (isMissingTableError(err)) {
+        console.warn(
+          "[AlertService] checkDocumentExpirations: tabela 'Document' não encontrada (P2021). " +
+          "Execute 'npx prisma migrate deploy' para aplicar as migrações pendentes. Serviço ignorado até que o schema esteja sincronizado."
+        );
+        return;
+      }
+      // Re-throw unexpected errors so callers can decide how to handle them
+      throw err;
     }
   },
 

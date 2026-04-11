@@ -16,7 +16,10 @@ export default async function handler(req: any, res: any) {
     return res.status(403).json({ error: "Acesso negado" });
   }
 
-  const password = process.env.ADMIN_DEFAULT_PASSWORD || "admin123";
+  const password = process.env.ADMIN_DEFAULT_PASSWORD;
+  if (!password) {
+    return res.status(500).json({ error: "ADMIN_DEFAULT_PASSWORD não configurado. Defina uma senha segura." });
+  }
 
   try {
     const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
@@ -37,7 +40,6 @@ export default async function handler(req: any, res: any) {
     res.status(201).json({ message: "Admin criado", userId: admin.id });
   } catch (error) {
     console.error("[POST /api/seed]", error);
-    const detail = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: "Falha ao executar seed", detail });
+    res.status(500).json({ error: "Falha ao executar seed" });
   }
 }

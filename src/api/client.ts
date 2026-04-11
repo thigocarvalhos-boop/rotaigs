@@ -74,7 +74,9 @@ export const apiClient = {
   async getProjects() {
     const res = await fetchWithRefresh(`${API_BASE}/projects`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar projetos");
-    return safeJson(res);
+    const json = await safeJson(res);
+    // Handle both paginated { data, total } and plain array responses
+    return Array.isArray(json) ? json : (json.data || []);
   },
 
   async createProject(project: any) {
@@ -152,7 +154,9 @@ export const apiClient = {
   async getDocuments() {
     const res = await fetchWithRefresh(`${API_BASE}/documents`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar documentos");
-    return safeJson(res);
+    const json = await safeJson(res);
+    // Handle both paginated { data, total } and plain array responses
+    return Array.isArray(json) ? json : (json.data || []);
   },
 
   async uploadDocument(doc: any) {
@@ -191,7 +195,9 @@ export const apiClient = {
   async getAuditLogs() {
     const res = await fetchWithRefresh(`${API_BASE}/audit-logs`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Erro ao buscar logs de auditoria");
-    return safeJson(res);
+    const json = await safeJson(res);
+    // Handle both paginated { data, total } and plain array responses
+    return Array.isArray(json) ? json : (json.data || []);
   },
 
   // --- Stats ---

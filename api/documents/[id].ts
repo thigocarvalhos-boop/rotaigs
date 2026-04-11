@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/prisma.js";
-import { authenticate, can } from "../_lib/auth.js";
+import { authenticate, can, sanitizeString } from "../_lib/auth.js";
 import { auditService } from "../_lib/audit.js";
 
 export default async function handler(req: any, res: any) {
@@ -19,11 +19,11 @@ export default async function handler(req: any, res: any) {
       const doc = await prisma.document.update({
         where: { id },
         data: {
-          ...(data.nome !== undefined && { nome: data.nome }),
-          ...(data.status !== undefined && { status: data.status }),
+          ...(data.nome !== undefined && { nome: sanitizeString(data.nome, 200) }),
+          ...(data.status !== undefined && { status: sanitizeString(data.status, 50) }),
           ...(data.validade !== undefined && { validade: data.validade ? new Date(data.validade) : null }),
-          ...(data.url !== undefined && { url: data.url || null }),
-          ...(data.fileType !== undefined && { fileType: data.fileType || null }),
+          ...(data.url !== undefined && { url: data.url ? sanitizeString(data.url, 500) : null }),
+          ...(data.fileType !== undefined && { fileType: data.fileType ? sanitizeString(data.fileType, 10) : null }),
         },
         include: { project: true },
       });
@@ -45,13 +45,23 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // DELETE /api/documents/:id — uses documents:update permission (consistent with original behavior)
+  // DELETE /api/documents/:id — requires documents:delete permission
   if (req.method === "DELETE") {
-    if (!can(user, "documents:update", res)) return;
+    if (!can(user, "documents:delete", res)) return;
     try {
       const doc = await prisma.document.findUnique({ where: { id } });
       if (!doc) return res.status(404).json({ error: "Documento não encontrado" });
       await prisma.document.delete({ where: { id } });
+
+      await auditService.log({
+        userId: user.id,
+        projectId: doc.projectId,
+        acao: "DELETE",
+        entidade: "Document",
+        entidadeId: id,
+        antes: doc,
+      });
+
       return res.json({ success: true });
     } catch (error) {
       console.error("[DELETE /api/documents/:id]", error);
