@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm run vercel-build",
+  "buildCommand": "npx prisma@6.4.1 generate && npx prisma@6.4.1 migrate deploy && npx vite build",
   "outputDirectory": "dist",
   "routes": [
     { "handle": "filesystem" },

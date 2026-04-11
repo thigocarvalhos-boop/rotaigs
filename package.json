@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "npx prisma@6.4.1 generate && vite build",
-    "vercel-build": "npx prisma@6.4.1 generate && npx prisma@6.4.1 migrate deploy && vite build",
     "preview": "vite preview",
     "start": "npx prisma migrate deploy && NODE_ENV=production tsx server.ts",
     "clean": "rm -rf dist",
