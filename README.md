@@ -50,7 +50,7 @@ cp .env.example .env
 Se tiver PostgreSQL configurado:
 
 ```bash
-npx prisma migrate dev
+npx prisma@6.4.1 migrate dev
 ```
 
 ### 4. Executar em desenvolvimento
