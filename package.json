@@ -6,15 +6,15 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "TAILWIND_DISABLE_OXIDE=1 npx prisma@6.4.1 generate && TAILWIND_DISABLE_OXIDE=1 vite build",
-    "vercel-build": "TAILWIND_DISABLE_OXIDE=1 npx prisma@6.4.1 generate && npx prisma@6.4.1 migrate deploy && TAILWIND_DISABLE_OXIDE=1 vite build",
+    "vercel-build": "DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder TAILWIND_DISABLE_OXIDE=1 npx prisma@6.4.1 generate && npx prisma@6.4.1 db push --accept-data-loss && npx tsx scripts/seed-production.ts && TAILWIND_DISABLE_OXIDE=1 vite build",
     "preview": "vite preview",
-    "start": "npx prisma@6.4.1 migrate deploy && NODE_ENV=production tsx server.ts",
+    "start": "npx prisma@6.4.1 db push && NODE_ENV=production tsx server.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "lint:api": "tsc --noEmit -p tsconfig.api.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate:prod": "npx prisma@6.4.1 migrate deploy"
+    "migrate:prod": "npx prisma@6.4.1 db push"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
