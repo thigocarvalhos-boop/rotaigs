@@ -1,4 +1,2 @@
 [build]
-builder = "nixpacks"
-[env]
-NODE_VERSION = "20.19.0"
+builder = "dockerfile"
