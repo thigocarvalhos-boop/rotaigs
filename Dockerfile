@@ -1,5 +1,12 @@
 FROM node:20-slim
 
+# Prisma's schema engine (used by `prisma migrate deploy`) is a Rust binary
+# that links against OpenSSL.  node:20-slim is a minimal Debian image with no
+# OpenSSL — the engine fails at runtime with "Schema engine error".
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # ── Layer 1: dependencies ────────────────────────────────────────────────────

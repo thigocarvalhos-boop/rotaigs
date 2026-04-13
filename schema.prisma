@@ -1,0 +1,203 @@
+// prisma/schema.prisma
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  DIRETORIA
+  COORDENACAO
+  ELABORADOR
+  DOCUMENTAL
+  FINANCEIRO
+  MONITORAMENTO
+  LEITURA
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(LEITURA)
+  projects  Project[] @relation("ProjectResponsible")
+  auditLogs AuditLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id              String   @id @default(uuid())
+  nome            String
+  edital          String
+  financiador     String
+  area            String
+  valor           Float
+  status          String
+  prazo           DateTime
+  responsavelId   String
+  responsavel     User     @relation("ProjectResponsible", fields: [responsavelId], references: [id])
+  probabilidade   Int
+  risco           String
+  aderencia       Int
+  territorio      String
+  publico         String
+  competitividade String
+  proximoPasso    String
+  ptScore         Int
+  
+  metas           Meta[]
+  etapas          Etapa[]
+  expenses        Expense[]
+  docs            Document[]
+  compliance      ComplianceCheck[]
+  alerts          Alert[]
+  auditLogs       AuditLog[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([responsavelId])
+  @@index([status])
+}
+
+model Meta {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  descricao String
+  indicador String
+  meta      Float
+  alcancado Float
+  unidade   String
+  budget    Float    @default(0)
+
+  @@index([projectId])
+}
+
+model Etapa {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  nome      String
+  inicio    DateTime
+  fim       DateTime
+  status    String
+  peso      Float
+
+  @@index([projectId])
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  descricao   String
+  valor       Float
+  data        DateTime
+  categoria   String
+  status      String
+  justificativa String?
+  vincMetaId  String
+  vincEtapaId String
+  cotacoes    Cotacao[]
+
+  @@index([projectId])
+  @@index([vincMetaId])
+}
+
+model Cotacao {
+  id          String   @id @default(uuid())
+  expenseId   String
+  expense     Expense  @relation(fields: [expenseId], references: [id])
+  fornecedor  String
+  valor       Float
+  data        DateTime
+  vencedora   Boolean
+  docUrl      String?
+
+  @@index([expenseId])
+}
+
+model Document {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  nome      String
+  status    String
+  validade  DateTime?
+  url       String?
+  fileType  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model ComplianceCheck {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  item      String
+  status    String
+  data      DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model Alert {
+  id        String   @id @default(uuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  titulo    String
+  mensagem  String
+  nivel     String
+  status    String
+  tipo      String
+  prazo     DateTime?
+  lido      Boolean  @default(false)
+  lidoEm    DateTime?
+  lidoPor   String?
+  resolucao String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+  acao       String
+  entidade   String
+  entidadeId String?
+  antes      String?
+  depois     String?
+  data       DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([data])
+}
+
+model LessonLearned {
+  id        String   @id @default(uuid())
+  projeto   String
+  licao     String
+  categoria String?
+  autor     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
