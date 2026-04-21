@@ -6,8 +6,5 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-# Sync Prisma schema without requiring migration history
-npx prisma@6.4.1 db push
-
-# Start the server
+# Start the server (production migrations are handled in server bootstrap)
 npm start
