@@ -6,8 +6,8 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-# Run Prisma migrations with explicit logging
-npx prisma@6.4.1 migrate deploy --verbose
+# Sync Prisma schema without requiring migration history
+npx prisma@6.4.1 db push
 
 # Start the server
 npm start

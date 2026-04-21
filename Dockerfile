@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Prisma's schema engine (used by `prisma migrate deploy`) is a Rust binary
+# Prisma's schema engine (used by Prisma CLI commands such as `prisma db push`) is a Rust binary
 # that links against OpenSSL.  node:20-slim is a minimal Debian image with no
 # OpenSSL — the engine fails at runtime with "Schema engine error".
 RUN apt-get update -y && \
@@ -37,6 +37,6 @@ RUN DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
     npm run build
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
-# npm start = `npx prisma@6.4.1 migrate deploy && NODE_ENV=production tsx server.ts`
+# npm start = `npx prisma@6.4.1 db push && NODE_ENV=production tsx server.ts`
 # Requires DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET in Railway env vars.
 CMD ["npm", "start"]
