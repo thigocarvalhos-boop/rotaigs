@@ -59,7 +59,7 @@ export const alertService = {
       if (isMissingTableError(err)) {
         console.warn(
           "[AlertService] checkDocumentExpirations: tabela 'Document' não encontrada (P2021). " +
-          "Execute 'npx prisma@6.4.1 migrate deploy' para aplicar as migrações pendentes. Serviço ignorado até que o schema esteja sincronizado."
+          "Execute 'npx prisma@6.4.1 db push' para sincronizar o schema. Serviço ignorado até que o schema esteja sincronizado."
         );
         return;
       }

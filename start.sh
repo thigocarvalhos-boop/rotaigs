@@ -6,8 +6,5 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-# Run Prisma migrations with explicit logging
-npx prisma@6.4.1 migrate deploy --verbose
-
-# Start the server
+# Start the server (production migrations are handled in server bootstrap)
 npm start
